@@ -1,0 +1,200 @@
+﻿using System.Data.Common;
+using System.Diagnostics;
+using System.Reflection;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
+using AssetRipper.Primitives;
+using Cpp2IL.Core;
+using Cpp2IL.Core.Api;
+using Cpp2IL.Core.InstructionSets;
+using Cpp2IL.Core.Utils;
+using static Extensions.Extensions;
+using LibCpp2IL;
+using LibCpp2IL.BinaryStructures;
+using LibCpp2IL.Metadata;
+using LibCpp2IL.Reflection;
+using LibCpp2IL.Wasm;
+
+#region proc arg handling
+
+if (args.Length != 3)
+{
+    Console.OpenStandardError().Write("Make sure to provide three arguments:\n"u8);
+    Console.OpenStandardError().Write("1. WASM file\n"u8);
+    Console.OpenStandardError().Write("2. global-metadata.dat file\n"u8);
+    Console.OpenStandardError().Write("3. Output file (probably ending in .json)\n"u8);
+    Process.GetCurrentProcess().Kill();
+}
+
+if (!File.Exists(args[0]))
+{
+    Console.OpenStandardError().Write("First file does not exist"u8);
+    Process.GetCurrentProcess().Kill();
+}
+
+if (!File.Exists(args[1]))
+{
+    Console.OpenStandardError().Write("Second file does not exist"u8);
+    Process.GetCurrentProcess().Kill();
+}
+
+#endregion
+
+#region Cpp2IL Setup
+
+Console.WriteLine("Setting up Cpp2IL...");
+InstructionSetRegistry.RegisterInstructionSet<WasmInstructionSet>(DefaultInstructionSets.WASM);
+Console.SetIn(new StringReader("4fb240"));
+Cpp2IlApi.InitializeLibCpp2Il(args[0],
+    args[1],
+    new UnityVersion(2023, 2, 5), true);
+
+#endregion
+
+Console.WriteLine("Parsing all classes...");
+Dictionary<string, Il2CppClass> classDict = [];
+foreach (var type in Cpp2IlApi.CurrentAppContext.Binary.AllTypes)
+{
+    if (type.Type is Il2CppTypeEnum.IL2CPP_TYPE_CLASS or Il2CppTypeEnum.IL2CPP_TYPE_VALUETYPE)
+    {
+        var cur = type.AsClass();
+
+        var serializable = new Il2CppClass(cur.FormattedTypeName(), cur.BaseType?.FormattedTypeName(), cur.Namespace!,
+            cur.Attributes.HasFlag(TypeAttributes.Abstract) && cur.Attributes.HasFlag(TypeAttributes.Sealed),
+            cur.GetInheritanceDepth(),
+            cur.FieldInfos!
+                .Select(x => new Il2CppField(x.Field.Name!, x.FieldOffset, x.Field.FieldType!.FormattedTypeName()))
+                .ToArray(),
+            cur.Methods!.Select(x => new Il2CppMethod(x.Name!,
+                    x.Parameters.Select(x => new Il2CppParameter(x.ParameterName, x.Type.FormattedTypeName()))
+                        .ToArray(),
+                    x.ReturnType?.FormattedTypeName(), x.Attributes.HasFlag(MethodAttributes.Static),
+                    x.GetWasmIndex(),
+                    x.MethodPointer // TODO: test to make sure this is correct
+                ))
+                .ToArray()
+        );
+        if (cur.FullName != null) classDict.TryAdd(cur.FullName, serializable);
+    }
+}
+
+// Cpp2IlApi.CurrentAppContext.AllTypes.First().Methods[0].Definition.MethodPointer
+
+#region Serialize (no more tree, sadge)
+
+Console.WriteLine("Serializing to " + args[2] + "...");
+var sorted = from entry in classDict orderby entry.Value.InheritanceDepth ascending select entry;
+
+var opts = new JsonSerializerOptions
+{
+    ReferenceHandler = ReferenceHandler.IgnoreCycles,
+    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    TypeInfoResolver = SourceGenerationContext.Default
+};
+File.WriteAllText(args[2],
+    JsonSerializer.Serialize<IOrderedEnumerable<KeyValuePair<string, Il2CppClass>>>(sorted, opts));
+
+#endregion
+
+Console.WriteLine("Done!");
+
+namespace Extensions
+{
+    static class Extensions
+    {
+        public static string FormattedTypeName(this Il2CppTypeReflectionData type)
+        {
+            var toret = Regex.Replace(type.ToString(), @"`\d", "");
+            if (!type.isGenericType || toret.Last() == '>') return toret;
+            toret += "<";
+            foreach (var param in type.genericParams)
+            {
+                toret = toret + param.FormattedTypeName() + ", ";
+            }
+
+            toret = toret[..^2];
+            toret += ">";
+
+            return toret;
+        }
+
+        public static string FormattedTypeName(this Il2CppTypeDefinition type)
+        {
+            var toret = Regex.Replace(type.Name!, @"`\d", "");
+            if (toret == type.Name!) return type.Name!;
+            toret += "<";
+            if (type.GenericContainer is not null)
+            {
+                foreach (var genericparam in type.GenericContainer.GenericParameters)
+                {
+                    toret = toret + genericparam.Name + ", ";
+                }
+            }
+
+            toret = toret[..^2];
+            toret += ">";
+            return toret;
+        }
+
+        public static int GetInheritanceDepth(this Il2CppTypeDefinition? type)
+        {
+            var counter = 0;
+            while ((type = type?.BaseType?.baseType) is not null)
+            {
+                counter++;
+            }
+
+            return counter;
+        }
+
+        public static int? GetWasmIndex(this Il2CppMethodDefinition method)
+        {
+            var wasmdef = WasmUtils.TryGetWasmDefinition(method);
+            if (wasmdef is null) return null;
+            return wasmdef.IsImport
+                ? ((WasmFile)LibCpp2IlMain.Binary!).FunctionTable.IndexOf(wasmdef)
+                : wasmdef.FunctionTableIndex;
+        }
+    }
+}
+
+#region Serializable data types
+
+// var treeRoot = TypeTreeBuilder.BuildTree(classDict);
+[JsonSourceGenerationOptions(WriteIndented = true)]
+[JsonSerializable(typeof(IOrderedEnumerable<KeyValuePair<string, Il2CppClass>>))]
+internal partial class SourceGenerationContext : JsonSerializerContext;
+
+public record Il2CppField(
+    string Name,
+    int Offset,
+    string? Type // maybe do better abstraction idk
+);
+
+public record Il2CppMethod(
+    string Name,
+    Il2CppParameter[] Parameters,
+    string? ReturnType,
+    bool IsStatic,
+    int? Index,
+    ulong MethodInfoPtr
+);
+
+public record Il2CppParameter(
+    string Name,
+    string? Type
+);
+
+public record Il2CppClass(
+    string Name,
+    string? BaseType,
+    string Namespace,
+    bool IsStruct,
+    int InheritanceDepth,
+    Il2CppField[] Fields,
+    Il2CppMethod[] Methods
+);
+
+#endregion
