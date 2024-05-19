@@ -1,10 +1,6 @@
-﻿using System.Data.Common;
-using System.Diagnostics;
-using System.Reflection;
-using System.Text;
+﻿using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Text.RegularExpressions;
 using AssetRipper.Primitives;
 using Cpp2IL.Core;
 using Cpp2IL.Core.Api;
@@ -13,9 +9,7 @@ using Cpp2IL.Core.Model.Contexts;
 using Cpp2IL.Core.Utils;
 using static Extensions.Extensions;
 using LibCpp2IL;
-using LibCpp2IL.BinaryStructures;
 using LibCpp2IL.Metadata;
-using LibCpp2IL.Reflection;
 using LibCpp2IL.Wasm;
 using StableNameDotNet.Providers;
 
