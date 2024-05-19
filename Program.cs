@@ -149,7 +149,7 @@ internal partial class SourceGenerationContext : JsonSerializerContext;
 public record Il2CppField(
     string Name,
     int Offset,
-    string? Type // maybe do better abstraction idk
+    string Type // maybe do better abstraction idk
 );
 
 public record Il2CppMethod(
@@ -163,7 +163,7 @@ public record Il2CppMethod(
 
 public record Il2CppParameter(
     string Name,
-    string? Type
+    string Type
 );
 
 public record Il2CppClass(
@@ -188,10 +188,10 @@ public record Il2CppClass(
             t.Fields.Select(f => new Il2CppField(
                 f.Name,
                 f.Offset,
-                f.FieldType.ToString()
+                f.FieldTypeContext.FullName
             )).ToArray(),
             t.Methods.Select(m => new Il2CppMethod(
-                m.Name,
+                m.Definition.Name,
                 m.Parameters.Select(p => new Il2CppParameter(p.Name, p.ReadableTypeName.Replace("/", "."))).ToArray(),
                 m.ReturnType.FixedRetString(),
                 m.IsStatic,
