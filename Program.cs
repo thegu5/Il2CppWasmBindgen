@@ -63,30 +63,7 @@ foreach (var t in Cpp2IlApi.CurrentAppContext.AllTypes)
     if (t.DeclaringType is not null) continue;
     classDict.TryAdd(t.FullName, t);
 }
-/*foreach (var type in Cpp2IlApi.CurrentAppContext.Binary.AllTypes)
-{
-    if (type.Type is Il2CppTypeEnum.IL2CPP_TYPE_CLASS or Il2CppTypeEnum.IL2CPP_TYPE_VALUETYPE)
-    {
-        var cur = type.AsClass();
-        if (cur.Name.Contains("Object")) Console.WriteLine("Hit! + " + cur.FullName);
-        var serializable = new Il2CppClass(cur.Name, cur.BaseType?.ToString(), cur.Namespace!,
-            cur.Attributes.HasFlag(TypeAttributes.Abstract) && cur.Attributes.HasFlag(TypeAttributes.Sealed),
-            cur.GetInheritanceDepth(),
-            cur.FieldInfos!
-                .Select(x => new Il2CppField(x.Field.Name!, x.FieldOffset, x.Field.FieldType!.ToString()))
-                .ToArray(),
-            cur.Methods!.Select(x => new Il2CppMethod(x.Name!,
-                    x.Parameters.Select(x => new Il2CppParameter(x.ParameterName, x.Type.ToString()))
-                        .ToArray(),
-                    x.ReturnType?.ToString(), x.Attributes.HasFlag(MethodAttributes.Static),
-                    x.GetWasmIndex(),
-                    x.MethodPointer // TODO: test to make sure this is correct
-                ))
-                .ToArray()
-        );
-        if (cur.FullName != null) classDict.TryAdd(cur.FullName, serializable);
-    }
-}*/
+
 #region Serialize (no more tree, sadge)
 
 Console.WriteLine("Serializing to " + args[2] + "...");
@@ -168,6 +145,7 @@ public record Il2CppParameter(
 
 public record Il2CppClass(
     string Name,
+    string[] GenericParams,
     string? BaseType,
     string Namespace,
     bool IsStruct,
@@ -179,8 +157,10 @@ public record Il2CppClass(
 {
     public static implicit operator Il2CppClass(TypeAnalysisContext t)
     {
+
         return new Il2CppClass(
             t.Name,
+            t.Definition.GenericContainer is not null ? t.Definition.GenericContainer.GenericParameters.Select(gp => gp.Name).ToArray() : [],
             t.BaseType?.Definition?.FullName.Replace("/", "."),
             t.Namespace,
             t.IsValueType || t.IsEnumType,
