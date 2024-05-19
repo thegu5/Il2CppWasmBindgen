@@ -9,6 +9,7 @@ using AssetRipper.Primitives;
 using Cpp2IL.Core;
 using Cpp2IL.Core.Api;
 using Cpp2IL.Core.InstructionSets;
+using Cpp2IL.Core.Model.Contexts;
 using Cpp2IL.Core.Utils;
 using static Extensions.Extensions;
 using LibCpp2IL;
@@ -16,6 +17,7 @@ using LibCpp2IL.BinaryStructures;
 using LibCpp2IL.Metadata;
 using LibCpp2IL.Reflection;
 using LibCpp2IL.Wasm;
+using StableNameDotNet.Providers;
 
 #region proc arg handling
 
@@ -55,22 +57,28 @@ Cpp2IlApi.InitializeLibCpp2Il(args[0],
 
 Console.WriteLine("Parsing all classes...");
 Dictionary<string, Il2CppClass> classDict = [];
-foreach (var type in Cpp2IlApi.CurrentAppContext.Binary.AllTypes)
+
+foreach (var t in Cpp2IlApi.CurrentAppContext.AllTypes)
+{
+    if (t.DeclaringType is not null) continue;
+    classDict.TryAdd(t.FullName, t);
+}
+/*foreach (var type in Cpp2IlApi.CurrentAppContext.Binary.AllTypes)
 {
     if (type.Type is Il2CppTypeEnum.IL2CPP_TYPE_CLASS or Il2CppTypeEnum.IL2CPP_TYPE_VALUETYPE)
     {
         var cur = type.AsClass();
-
-        var serializable = new Il2CppClass(cur.FormattedTypeName(), cur.BaseType?.FormattedTypeName(), cur.Namespace!,
+        if (cur.Name.Contains("Object")) Console.WriteLine("Hit! + " + cur.FullName);
+        var serializable = new Il2CppClass(cur.Name, cur.BaseType?.ToString(), cur.Namespace!,
             cur.Attributes.HasFlag(TypeAttributes.Abstract) && cur.Attributes.HasFlag(TypeAttributes.Sealed),
             cur.GetInheritanceDepth(),
             cur.FieldInfos!
-                .Select(x => new Il2CppField(x.Field.Name!, x.FieldOffset, x.Field.FieldType!.FormattedTypeName()))
+                .Select(x => new Il2CppField(x.Field.Name!, x.FieldOffset, x.Field.FieldType!.ToString()))
                 .ToArray(),
             cur.Methods!.Select(x => new Il2CppMethod(x.Name!,
-                    x.Parameters.Select(x => new Il2CppParameter(x.ParameterName, x.Type.FormattedTypeName()))
+                    x.Parameters.Select(x => new Il2CppParameter(x.ParameterName, x.Type.ToString()))
                         .ToArray(),
-                    x.ReturnType?.FormattedTypeName(), x.Attributes.HasFlag(MethodAttributes.Static),
+                    x.ReturnType?.ToString(), x.Attributes.HasFlag(MethodAttributes.Static),
                     x.GetWasmIndex(),
                     x.MethodPointer // TODO: test to make sure this is correct
                 ))
@@ -78,10 +86,7 @@ foreach (var type in Cpp2IlApi.CurrentAppContext.Binary.AllTypes)
         );
         if (cur.FullName != null) classDict.TryAdd(cur.FullName, serializable);
     }
-}
-
-// Cpp2IlApi.CurrentAppContext.AllTypes.First().Methods[0].Definition.MethodPointer
-
+}*/
 #region Serialize (no more tree, sadge)
 
 Console.WriteLine("Serializing to " + args[2] + "...");
@@ -104,45 +109,13 @@ namespace Extensions
 {
     static class Extensions
     {
-        public static string FormattedTypeName(this Il2CppTypeReflectionData type)
-        {
-            var toret = Regex.Replace(type.ToString(), @"`\d", "");
-            if (!type.isGenericType || toret.Last() == '>') return toret;
-            toret += "<";
-            foreach (var param in type.genericParams)
-            {
-                toret = toret + param.FormattedTypeName() + ", ";
-            }
 
-            toret = toret[..^2];
-            toret += ">";
-
-            return toret;
-        }
-
-        public static string FormattedTypeName(this Il2CppTypeDefinition type)
-        {
-            var toret = Regex.Replace(type.Name!, @"`\d", "");
-            if (toret == type.Name!) return type.Name!;
-            toret += "<";
-            if (type.GenericContainer is not null)
-            {
-                foreach (var genericparam in type.GenericContainer.GenericParameters)
-                {
-                    toret = toret + genericparam.Name + ", ";
-                }
-            }
-
-            toret = toret[..^2];
-            toret += ">";
-            return toret;
-        }
-
-        public static int GetInheritanceDepth(this Il2CppTypeDefinition? type)
+        public static int GetInheritanceDepth(this TypeAnalysisContext? type)
         {
             var counter = 0;
-            while ((type = type?.BaseType?.baseType) is not null)
+            while (type.BaseType is not null)
             {
+                type = type.BaseType;
                 counter++;
             }
 
@@ -156,6 +129,12 @@ namespace Extensions
             return wasmdef.IsImport
                 ? ((WasmFile)LibCpp2IlMain.Binary!).FunctionTable.IndexOf(wasmdef)
                 : wasmdef.FunctionTableIndex;
+        }
+
+        public static string? FixedRetString(this ITypeInfoProvider t)
+        {
+            if (t.RewrittenTypeName == "Void") return null;
+            return t.TypeNamespace == "" ? t.RewrittenTypeName : t.TypeNamespace + "." + t.RewrittenTypeName;
         }
     }
 }
@@ -194,7 +173,34 @@ public record Il2CppClass(
     bool IsStruct,
     int InheritanceDepth,
     Il2CppField[] Fields,
-    Il2CppMethod[] Methods
-);
+    Il2CppMethod[] Methods,
+    Il2CppClass[] NestedClasses
+)
+{
+    public static implicit operator Il2CppClass(TypeAnalysisContext t)
+    {
+        return new Il2CppClass(
+            t.Name,
+            t.BaseType?.Definition?.FullName.Replace("/", "."),
+            t.Namespace,
+            t.IsValueType || t.IsEnumType,
+            t.GetInheritanceDepth(),
+            t.Fields.Select(f => new Il2CppField(
+                f.Name,
+                f.Offset,
+                f.FieldType.ToString()
+            )).ToArray(),
+            t.Methods.Select(m => new Il2CppMethod(
+                m.Name,
+                m.Parameters.Select(p => new Il2CppParameter(p.Name, p.ReadableTypeName.Replace("/", "."))).ToArray(),
+                m.ReturnType.FixedRetString(),
+                m.IsStatic,
+                m.Definition.GetWasmIndex(),
+                m.UnderlyingPointer
+            )).ToArray(),
+            t.NestedTypes.Select(n => (Il2CppClass) n).ToArray()
+        );
+    }
+}
 
 #endregion
