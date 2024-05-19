@@ -9,4 +9,5 @@
     "strict": true,
     "skipLibCheck": false
   },
+  "files": ["bindgen.ts"]
 }
