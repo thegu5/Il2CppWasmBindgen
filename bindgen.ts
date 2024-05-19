@@ -19,7 +19,7 @@ const ast = recast.parse("", {
     parser: require("recast/parsers/typescript")
 });
 function formatPropName(name: string) {
-    return name.replace(/[=/]/g, "_");
+    return name.replace(/[=/`]/g, "_");
 }
 
 const b = recast.types.builders;
@@ -36,7 +36,7 @@ typedata.forEach((t) => {
                             b.classBody(
                                 []
                             ),
-                            t.Value.BaseType ? b.identifier(formatPropName(t.Value.BaseType)) : null
+                            t.Value.BaseType ? b.identifier("Il2Cpp." + formatPropName(t.Value.BaseType)) : null
                         )
                     )
                 ]))));
