@@ -39,8 +39,8 @@ const ast = recast.parse("", {
     parser: require("recast/parsers/typescript")
 });
 
-function formatPropName(name: string) {
-    return name.replace(/[=/`]/g, "_");
+function normalize(name: string) {
+    return name.replace(/[=/`<>|-]/g, "_");
 }
 
 const b = recast.types.builders;
@@ -56,27 +56,29 @@ function classDeclarationToExpression(dec: recast.types.namedTypes.ClassDeclarat
 
 function classToSyntax(data: Il2CppClass): recast.types.namedTypes.ClassDeclaration {
     let dec = b.classDeclaration(
-        b.identifier(formatPropName(data.Name)),
+        b.identifier(normalize(data.Name)),
         b.classBody([]),
-        data.BaseType ? b.identifier("Il2Cpp." + formatPropName(data.BaseType)) : null
+        data.BaseType ? b.identifier("Il2Cpp." + normalize(data.BaseType)) : null
     );
     if (data.GenericParams.length > 0) {
         dec.typeParameters = b.tsTypeParameterDeclaration(
-            data.GenericParams.map((p) => b.tsTypeParameter(p))
+            data.GenericParams.map((p) => b.tsTypeParameter(normalize(p)))
         );
     }
     data.NestedClasses.forEach((nc) => {
-        /*dec.body.body.push(b.classProperty(
-            b.identifier(nc.Name),
-            classDeclarationToExpression(classToSyntax(nc))
-        ))*/
+        let prop = b.classProperty(
+            b.identifier(normalize(nc.Name)),
+            classDeclarationToExpression(classToSyntax(nc)),
+        )
+        prop.static = true;
+        dec.body.body.push(prop)
     });
     return dec;
 }
 
 typedata.forEach((arrelem) => {
     let t = arrelem.Value;
-    if (t.Name[0] == '<' || t.Name[0] == '>') return; // weird anonymous type, nested class stuff (TODO!)
+    // if (t.Name[0] == '<' || t.Name[0] == '>') return; // weird anonymous type, nested class stuff (TODO!)
     ast.program.body.push(
         b.exportNamedDeclaration(
             b.tsModuleDeclaration(

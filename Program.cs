@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using AssetRipper.Primitives;
 using Cpp2IL.Core;
 using Cpp2IL.Core.Api;
@@ -51,11 +52,26 @@ Cpp2IlApi.InitializeLibCpp2Il(args[0],
 
 Console.WriteLine("Parsing all classes...");
 Dictionary<string, Il2CppClass> classDict = [];
-
-foreach (var t in Cpp2IlApi.CurrentAppContext.AllTypes)
+var alltypes = Cpp2IlApi.CurrentAppContext.AllTypes.ToList();
+// var finished = new List<string>();
+for (var i = 0; i < alltypes.Count; i++)
 {
+    var t = alltypes[i];
     if (t.DeclaringType is not null) continue;
+    // Debugger.Break();
+    /*if (t.GetAllDeps().Intersect(finished).Count() != t.GetAllDeps().Count)
+    {
+        Console.WriteLine("hit with " + t.FullName + " " + string.Join(',', t.GetAllDeps().Except(finished).ToArray()));
+        Console.WriteLine("");
+        Console.WriteLine(i);
+        alltypes.RemoveAt(i);
+        alltypes.Add(t);
+        i--;
+        // Console.WriteLine(i);
+    }*/
+
     classDict.TryAdd(t.FullName, t);
+    // finished.Add(t.Name);
 }
 
 #region Serialize (no more tree, sadge)
@@ -80,17 +96,48 @@ namespace Extensions
 {
     static class Extensions
     {
-
-        public static int GetInheritanceDepth(this TypeAnalysisContext? type)
+        public static int GetInheritanceDepth(this TypeAnalysisContext type)
         {
+            Debugger.Break();
+            // if (type.Name == "Interop") Debugger.Break();
             var counter = 0;
-            while (type.BaseType is not null)
+            var typetoloop = type;
+            var depths = new List<int>();
+            while (typetoloop.BaseType is not null)
             {
-                type = type.BaseType;
+                depths.AddRange(typetoloop.NestedTypes.Select(GetInheritanceDepth));
+                if (typetoloop.BaseType == typetoloop.DeclaringType) break;
+                typetoloop = typetoloop.BaseType;
                 counter++;
             }
 
-            return counter;
+            depths.Add(counter);
+            return depths.Max();
+        }
+
+        public static List<string> GetAllDeps(this TypeAnalysisContext type)
+        {
+            var toret = new List<string>();
+            if (type.BaseType is not null)
+            {
+                var rep = Regex.Replace(type.BaseType.UltimateDeclaringType.Name, @"(`\d)(<.+>$)", "$1")
+                    .Replace("[]", "");
+                toret.Add(rep);
+                /*if (type.BaseType.Name.Contains('['))
+                {
+                    Console.WriteLine("From " + type.BaseType.Name + " to " + rep);
+                }*/
+            }
+
+            var counter = 0;
+            foreach (var nested in type.NestedTypes)
+            {
+                counter++;
+                toret = toret.Concat(nested.GetAllDeps()).ToList();
+            }
+
+            // if (counter > 1) Debugger.Break();
+            return toret;
         }
 
         public static int? GetWasmIndex(this Il2CppMethodDefinition method)
@@ -151,10 +198,11 @@ public record Il2CppClass(
 {
     public static implicit operator Il2CppClass(TypeAnalysisContext t)
     {
-
         return new Il2CppClass(
             t.Name,
-            t.Definition.GenericContainer is not null ? t.Definition.GenericContainer.GenericParameters.Select(gp => gp.Name).ToArray() : [],
+            t.Definition.GenericContainer is not null
+                ? t.Definition.GenericContainer.GenericParameters.Select(gp => gp.Name).ToArray()
+                : [],
             t.BaseType?.Definition?.FullName.Replace("/", "."),
             t.Namespace,
             t.IsValueType || t.IsEnumType,
@@ -172,7 +220,7 @@ public record Il2CppClass(
                 m.Definition.GetWasmIndex(),
                 m.UnderlyingPointer
             )).ToArray(),
-            t.NestedTypes.Select(n => (Il2CppClass) n).ToArray()
+            t.NestedTypes.Select(n => (Il2CppClass)n).ToArray()
         );
     }
 }
