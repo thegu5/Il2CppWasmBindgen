@@ -53,25 +53,10 @@ Cpp2IlApi.InitializeLibCpp2Il(args[0],
 Console.WriteLine("Parsing all classes...");
 Dictionary<string, Il2CppClass> classDict = [];
 var alltypes = Cpp2IlApi.CurrentAppContext.AllTypes.ToList();
-// var finished = new List<string>();
-for (var i = 0; i < alltypes.Count; i++)
-{
-    var t = alltypes[i];
-    if (t.DeclaringType is not null) continue;
-    // Debugger.Break();
-    /*if (t.GetAllDeps().Intersect(finished).Count() != t.GetAllDeps().Count)
-    {
-        Console.WriteLine("hit with " + t.FullName + " " + string.Join(',', t.GetAllDeps().Except(finished).ToArray()));
-        Console.WriteLine("");
-        Console.WriteLine(i);
-        alltypes.RemoveAt(i);
-        alltypes.Add(t);
-        i--;
-        // Console.WriteLine(i);
-    }*/
 
+foreach (var t in alltypes.Where(t => t.DeclaringType is null))
+{
     classDict.TryAdd(t.FullName, t);
-    // finished.Add(t.Name);
 }
 
 #region Serialize (no more tree, sadge)
@@ -98,21 +83,13 @@ namespace Extensions
     {
         public static int GetInheritanceDepth(this TypeAnalysisContext type)
         {
-            Debugger.Break();
-            // if (type.Name == "Interop") Debugger.Break();
             var counter = 0;
-            var typetoloop = type;
-            var depths = new List<int>();
-            while (typetoloop.BaseType is not null)
+            while (type.BaseType is not null)
             {
-                depths.AddRange(typetoloop.NestedTypes.Select(GetInheritanceDepth));
-                if (typetoloop.BaseType == typetoloop.DeclaringType) break;
-                typetoloop = typetoloop.BaseType;
+                type = type.BaseType;
                 counter++;
             }
-
-            depths.Add(counter);
-            return depths.Max();
+            return counter;
         }
 
         public static List<string> GetAllDeps(this TypeAnalysisContext type)

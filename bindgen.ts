@@ -44,7 +44,7 @@ function normalize(name: string) {
 }
 
 const b = recast.types.builders;
-
+const asttypes = recast.types.namedTypes;
 function classDeclarationToExpression(dec: recast.types.namedTypes.ClassDeclaration): recast.types.namedTypes.ClassExpression {
     return b.classExpression(
         dec.id,
@@ -68,10 +68,14 @@ function classToSyntax(data: Il2CppClass): recast.types.namedTypes.ClassDeclarat
     data.NestedClasses.forEach((nc) => {
         let prop = b.classProperty(
             b.identifier(normalize(nc.Name)),
-            classDeclarationToExpression(classToSyntax(nc)),
-        )
-        prop.static = true;
-        dec.body.body.push(prop)
+            classDeclarationToExpression(classToSyntax(nc))
+        );
+        (prop.value as recast.types.namedTypes.ClassExpression).superClass = b.identifier("any");
+        /*let m = b.classMethod("get", b.identifier(normalize(nc.Name)), [], b.blockStatement(
+            [b.returnStatement(classDeclarationToExpression(classToSyntax(nc)))]
+        ))*/
+        dec.body.body.push(prop);
+        
     });
     return dec;
 }

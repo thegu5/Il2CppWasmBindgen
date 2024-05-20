@@ -6,3 +6,6 @@ These classes will be designed to call into [UnityWebModkit](https://github.com/
 Current project status: ~~C# side done for now~~ (I lied), beginning to work on the TypeScript portion which uses the TS compiler API
 
 Very much open to contributions :-)
+
+## Known Issues
+- Nested classes don't extend classes they inherit from (typecast is needed to access parent members)
