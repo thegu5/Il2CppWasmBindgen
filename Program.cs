@@ -144,6 +144,7 @@ internal partial class SourceGenerationContext : JsonSerializerContext;
 public record Il2CppField(
     string Name,
     int Offset,
+    string[] TypeGenericParams,
     string Type // maybe do better abstraction idk
 );
 
@@ -175,6 +176,7 @@ public record Il2CppClass(
 {
     public static implicit operator Il2CppClass(TypeAnalysisContext t)
     {
+        if (t.Name == "BitConverter") Debugger.Break();
         return new Il2CppClass(
             t.Name,
             t.Definition.GenericContainer is not null
@@ -187,7 +189,8 @@ public record Il2CppClass(
             t.Fields.Select(f => new Il2CppField(
                 f.Name,
                 f.Offset,
-                f.FieldTypeContext.FullName
+                f.FieldTypeInfoProvider.GenericArgumentInfoProviders.Select(provider => provider.TypeNamespace == "" ? provider.OriginalTypeName : provider.TypeNamespace + "." + provider.OriginalTypeName).ToArray(),
+                f.FieldTypeInfoProvider.TypeNamespace == "" ? f.FieldTypeInfoProvider.OriginalTypeName : f.FieldTypeInfoProvider.TypeNamespace + "." + f.FieldTypeInfoProvider.OriginalTypeName
             )).ToArray(),
             t.Methods.Select(m => new Il2CppMethod(
                 m.Definition.Name,
