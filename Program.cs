@@ -89,6 +89,7 @@ namespace Extensions
                 type = type.BaseType;
                 counter++;
             }
+
             return counter;
         }
 
@@ -126,10 +127,28 @@ namespace Extensions
                 : wasmdef.FunctionTableIndex;
         }
 
-        public static string? FixedRetString(this ITypeInfoProvider t)
+        public static Il2CppType ToIl2CppType(this ITypeInfoProvider t)
         {
-            if (t.RewrittenTypeName == "Void") return null;
-            return t.TypeNamespace == "" ? t.RewrittenTypeName : t.TypeNamespace + "." + t.RewrittenTypeName;
+            if (t.OriginalTypeName == "Error" && t.TypeNamespace == "") Debugger.Break();
+            if (t is GenericInstanceTypeAnalysisContext gent) return gent.GenericType.ToIl2CppType();
+            if (t.OriginalTypeName == "Property`2<Angle, AngleUnit>")
+            {
+                Debugger.Break();
+            }
+            var thing = new Il2CppType(
+                t.OriginalTypeName,
+                t.GenericArgumentInfoProviders.Select(prov => prov.ToIl2CppType()).ToArray(),
+                t is TypeAnalysisContext { Definition: not null, GenericParameterCount: > 0 } context ? context.Definition.GenericContainer.GenericParameters.Select<Il2CppGenericParameter, string>(gp => gp.Name!).ToArray() : [],
+                t.DeclaringTypeInfoProvider is null ?
+                    t.TypeNamespace
+                    :
+                    t.DeclaringTypeInfoProvider.TypeNamespace == "" ?
+                        t.DeclaringTypeInfoProvider.OriginalTypeName
+                        :
+                        t.DeclaringTypeInfoProvider.TypeNamespace + "." + t.DeclaringTypeInfoProvider.OriginalTypeName,
+                t.DeclaringTypeInfoProvider is not null
+            );
+            return thing;
         }
     }
 }
@@ -141,17 +160,24 @@ namespace Extensions
 [JsonSerializable(typeof(IOrderedEnumerable<KeyValuePair<string, Il2CppClass>>))]
 internal partial class SourceGenerationContext : JsonSerializerContext;
 
+public record Il2CppType(
+    string Name,
+    Il2CppType[] GenericArgs,
+    string[] GenericParams,
+    string Namespace,
+    bool IsNested
+);
+
 public record Il2CppField(
     string Name,
     int Offset,
-    string[] TypeGenericParams,
-    string Type // maybe do better abstraction idk
+    Il2CppType Type
 );
 
 public record Il2CppMethod(
     string Name,
     Il2CppParameter[] Parameters,
-    string? ReturnType,
+    Il2CppType? ReturnType,
     bool IsStatic,
     int? Index,
     ulong MethodInfoPtr
@@ -159,14 +185,12 @@ public record Il2CppMethod(
 
 public record Il2CppParameter(
     string Name,
-    string Type
+    Il2CppType Type
 );
 
 public record Il2CppClass(
-    string Name,
-    string[] GenericParams,
-    string? BaseType,
-    string Namespace,
+    Il2CppType Type,
+    Il2CppType? BaseType,
     bool IsStruct,
     int InheritanceDepth,
     Il2CppField[] Fields,
@@ -176,26 +200,21 @@ public record Il2CppClass(
 {
     public static implicit operator Il2CppClass(TypeAnalysisContext t)
     {
-        if (t.Name == "BitConverter") Debugger.Break();
         return new Il2CppClass(
-            t.Name,
-            t.Definition.GenericContainer is not null
-                ? t.Definition.GenericContainer.GenericParameters.Select(gp => gp.Name).ToArray()
-                : [],
-            t.BaseType?.Definition?.FullName.Replace("/", "."),
-            t.Namespace,
+            t.ToIl2CppType(),
+            t.BaseType?.ToIl2CppType(),
             t.IsValueType || t.IsEnumType,
             t.GetInheritanceDepth(),
             t.Fields.Select(f => new Il2CppField(
                 f.Name,
                 f.Offset,
-                f.FieldTypeInfoProvider.GenericArgumentInfoProviders.Select(provider => provider.TypeNamespace == "" ? provider.OriginalTypeName : provider.TypeNamespace + "." + provider.OriginalTypeName).ToArray(),
-                f.FieldTypeInfoProvider.TypeNamespace == "" ? f.FieldTypeInfoProvider.OriginalTypeName : f.FieldTypeInfoProvider.TypeNamespace + "." + f.FieldTypeInfoProvider.OriginalTypeName
+                f.FieldTypeInfoProvider.ToIl2CppType()
             )).ToArray(),
             t.Methods.Select(m => new Il2CppMethod(
                 m.Definition.Name,
-                m.Parameters.Select(p => new Il2CppParameter(p.Name, p.ReadableTypeName.Replace("/", "."))).ToArray(),
-                m.ReturnType.FixedRetString(),
+                m.Parameters.Select(p => new Il2CppParameter(p.Name, p.ParameterTypeInfoProvider.ToIl2CppType()))
+                    .ToArray(),
+                m.ReturnType.OriginalTypeName == "Void" ? null : m.ReturnType.ToIl2CppType(),
                 m.IsStatic,
                 m.Definition.GetWasmIndex(),
                 m.UnderlyingPointer
