@@ -4,14 +4,13 @@ import * as recast from "recast";
 
 interface Il2CppType {
     Name: string,
-    GenericArgs: Il2CppType[], // for actual typing
-    GenericParams: string[], // for classes (T, T2, etc)
-    Namespace: string
+    FullName: string,
+    Namespace: string,
     IsNested: boolean
 }
 
 interface Il2CppClass {
-    Type: Il2CppType
+    Type: Il2CppType,
     BaseType: Il2CppType | null,
     IsStruct: boolean,
     InheritanceDepth: number,
@@ -36,10 +35,7 @@ interface Il2CppMethod {
 }
 
 
-const typedata = JSON.parse(fs.readFileSync(process.argv[process.argv.length - 1]).toString()) as {
-    Key: string,
-    Value: Il2CppClass
-}[];
+const typedata = JSON.parse(fs.readFileSync(process.argv[process.argv.length - 1]).toString()) as Il2CppClass[];
 
 const ast = recast.parse(`
 export class Il2CppObject {
@@ -70,7 +66,7 @@ export class Pointer<T extends Il2CppObject> {
 const b = recast.types.builders;
 
 
-function normalize(name: string, keepDots = false) {
+/*function normalize(name: string, keepDots = false) {
     name = name.replace(/[=/`<>\-|]/g, "_");
     if (!keepDots) {
         name = name.replace(/[.]/g, "_");
@@ -85,26 +81,26 @@ function normalize(name: string, keepDots = false) {
         name = "Pointer<" + name + ">";
     }
     return name;
-}
+}*/
 
 function getFullName(t: Il2CppType): string {
-    return getModifiedNamespace(t) + "." + normalize(t.Name);
+    return getModifiedNamespace(t) + "." + t.Name;
 }
 
 function getModifiedNamespace(t: Il2CppType): string {
-    return t.Namespace.length > 0 ? "Il2Cpp." + normalize(t.Namespace, true) : "Il2Cpp";
+    return t.Namespace.length > 0 ? "Il2Cpp." + t.Namespace : "Il2Cpp";
 }
 
-function toTypeRef(t: Il2CppType): recast.types.namedTypes.TSTypeReference {
+/*function toTypeRef(t: Il2CppType): recast.types.namedTypes.TSTypeReference {
     let toret = b.tsTypeReference(
             b.identifier(!t.IsNested ? getFullName(t) : getFullName(t).replace(/\.([^.]+$)/, '["$1"]')),
         b.tsTypeParameterInstantiation(
-            t.GenericArgs.map(genarg => toTypeRef(genarg))
+            t.GenericArgs.map(genarg => !genarg.IsNested ? toTypeRef(genarg) : b.tsAnyKeyword()) // stub nested classes
         )
     );
     if (t.GenericArgs.length == 0) toret.typeParameters = undefined; // remove empty <>
     return toret;
-}
+}*/
 
 
 
@@ -118,21 +114,22 @@ function classDeclarationToExpression(dec: recast.types.namedTypes.ClassDeclarat
 
 
 function classToSyntax(data: Il2CppClass): recast.types.namedTypes.ClassDeclaration {
-    let superClass = data.BaseType ? b.identifier(getFullName(data.BaseType)) : null;
+    let superClass = data.BaseType ? b.identifier(data.BaseType.FullName) : null;
     if (data.Type.Name == "Object" && data.Type.Namespace == "System") superClass = b.identifier("Il2CppObject");
     let dec = b.classDeclaration(
-        b.identifier(normalize(data.Type.Name)),
+        b.identifier(data.Type.Name),
         b.classBody([]),
-        data.BaseType ? b.identifier(normalize(data.BaseType.Name)) : null,
+        superClass,
     );
-    if (data.Type.GenericParams.length > 0) {
-        dec.typeParameters = b.tsTypeParameterDeclaration(
-            data.Type.GenericParams.map((p) => b.tsTypeParameter(normalize(p)))
-        );
-    }
     data.NestedClasses.forEach((nc) => {
+        // typing this as any since i cba to fix this ! !
+        /*let prop = b.classProperty(
+            b.identifier(nc.Type.Name),
+            null
+        );
+        prop.typeAnnotation = b.tsTypeAnnotation(b.tsAnyKeyword());*/
         let prop = b.classProperty(
-            b.identifier(normalize(nc.Type.Name)),
+            b.identifier(nc.Type.Name),
             classDeclarationToExpression(classToSyntax(nc))
         );
         // TODO: do something sane like split up each class into a es module instead of this annoying hack
@@ -142,11 +139,12 @@ function classToSyntax(data: Il2CppClass): recast.types.namedTypes.ClassDeclarat
     });
     data.Fields.forEach((f) => {
         let typeannotation = b.tsTypeAnnotation(b.tsUnionType([
-            toTypeRef(f.Type),
+            b.tsTypeReference(b.identifier(f.Type.FullName)),
             b.tsNullKeyword()
         ]));
+        // if (f.Type.IsNested) typeannotation = b.tsTypeAnnotation(b.tsAnyKeyword()); // hack!!!
         
-        let getter = b.classMethod("get", b.identifier(normalize(f.Name)), [], b.blockStatement(
+        let getter = b.classMethod("get", b.identifier(f.Name), [], b.blockStatement(
             [
                 b.returnStatement(b.nullLiteral())
             ]
@@ -155,16 +153,16 @@ function classToSyntax(data: Il2CppClass): recast.types.namedTypes.ClassDeclarat
         
         let sparamid = b.identifier("value");
         sparamid.typeAnnotation = typeannotation;
-        let setter = b.classMethod("set", b.identifier(normalize(f.Name)), [sparamid], b.blockStatement([]));
+        let setter = b.classMethod("set", b.identifier(f.Name), [sparamid], b.blockStatement([]));
         
         dec.body.body.push(getter);
         dec.body.body.push(setter);
     })
+    
     return dec;
 }
 
-typedata.forEach((arrelem) => {
-    let t = arrelem.Value;
+typedata.forEach((t) => {
     // if (t.Name[0] == '<' || t.Name[0] == '>') return; // weird anonymous type, nested class stuff (TODO!)
     ast.program.body.push(
         b.exportNamedDeclaration(
@@ -179,4 +177,4 @@ typedata.forEach((arrelem) => {
         )
     );
 });
-console.log(recast.print(ast).code);
+fs.writeFileSync("testing.ts", recast.print(ast).code);
