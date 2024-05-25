@@ -13,7 +13,6 @@ using LibCpp2IL;
 using LibCpp2IL.Metadata;
 using LibCpp2IL.Reflection;
 using LibCpp2IL.Wasm;
-using StableNameDotNet.Providers;
 
 #region proc arg handling
 
@@ -53,11 +52,15 @@ Cpp2IlApi.InitializeLibCpp2Il(args[0],
 
 Console.WriteLine("Parsing all classes...");
 List<Il2CppClass> classDict = [];
-var alltypes = Cpp2IlApi.CurrentAppContext.AllTypes.ToList();
 
-foreach (var t in alltypes.Where(t => t.DeclaringType is null))
+foreach (var t in Cpp2IlApi.CurrentAppContext.AllTypes.Where(t => t.DeclaringType is null && t.GenericParameterCount == 0))
 {
     classDict.Add(t);
+}
+
+foreach (var t in Cpp2IlApi.CurrentAppContext.ConcreteGenericMethodsByRef.Values.DistinctBy(ctx => ctx.DeclaringType.FullName))
+{
+    classDict.Add(t.DeclaringType);
 }
 
 #region Serialize
@@ -92,7 +95,7 @@ internal static class Extensions
         return counter;
     }
 
-    public static List<string> GetAllDeps(this TypeAnalysisContext type)
+    /*public static List<string> GetAllDeps(this TypeAnalysisContext type)
     {
         var toret = new List<string>();
         if (type.BaseType is not null)
@@ -103,7 +106,7 @@ internal static class Extensions
             /*if (type.BaseType.Name.Contains('['))
             {
                 Console.WriteLine("From " + type.BaseType.Name + " to " + rep);
-            }*/
+            }#1#
         }
 
         var counter = 0;
@@ -115,7 +118,7 @@ internal static class Extensions
 
         // if (counter > 1) Debugger.Break();
         return toret;
-    }
+    }*/
 
     public static int? GetWasmIndex(this Il2CppMethodDefinition method)
     {
@@ -125,25 +128,6 @@ internal static class Extensions
             ? ((WasmFile)LibCpp2IlMain.Binary!).FunctionTable.IndexOf(wasmdef)
             : wasmdef.FunctionTableIndex;
     }
-
-    /*public static Il2CppType ToIl2CppType(this TypeAnalysisContext t)
-    {
-        if (t.GenericParameterCount > 0) Debugger.Break();
-        if (t is GenericInstanceTypeAnalysisContext gent) return gent.GenericType.ToIl2CppType();
-        var thing = new Il2CppType(
-            t.OriginalTypeName,
-            t is TypeAnalysisContext ctx
-                ? LibCpp2ILUtils.GetTypeReflectionData(LibCpp2IlMain.Binary.GetType(ctx.Definition.TypeIndex))
-                    .ToString()
-                : t.RewrittenTypeName, // get il2cpptypereflectiondata
-            t.DeclaringTypeInfoProvider is null ? t.TypeNamespace
-            : t.DeclaringTypeInfoProvider.TypeNamespace == "" ? t.DeclaringTypeInfoProvider.OriginalTypeName
-            : t.DeclaringTypeInfoProvider.TypeNamespace + "." + t.DeclaringTypeInfoProvider.OriginalTypeName,
-            t.DeclaringTypeInfoProvider is not null,
-            t.IsGenericInstance // ??
-        );
-        return thing;
-    }*/
 
     public static string FullNameFromRef(this Il2CppTypeReflectionData t, bool ns = true)
     {
@@ -228,16 +212,25 @@ public record Il2CppClass(
 {
     public static implicit operator Il2CppClass(TypeAnalysisContext t)
     {
+        if (t.Name == "<>c<Background>")
+        {
+            Console.WriteLine("dt " + t.DeclaringType);
+            Console.WriteLine("bt " + t.BaseType);
+            Console.WriteLine((t as GenericInstanceTypeAnalysisContext).GenericType);
+            Console.WriteLine(t.GenericParameterCount);
+            Console.WriteLine(t.Definition);
+        }
         return new Il2CppClass(
             new Il2CppType(
                 t.Name.Clean(),
-                LibCpp2ILUtils.GetTypeReflectionData(LibCpp2IlMain.Binary!.GetType(t.Definition.TypeIndex)).FullNameFromRef(),
+                t.GetCSharpSourceString().Clean(),
                 t.Namespace
                 ),
             //null
             t.BaseType is not null ? new Il2CppType(
                 t.BaseType.Name.Clean(),
-                LibCpp2ILUtils.GetTypeReflectionData(LibCpp2IlMain.Binary!.GetType(t.Definition.TypeIndex)).FullNameFromRef(),
+                /*LibCpp2ILUtils.GetTypeReflectionData(LibCpp2IlMain.Binary!.GetType(t.Definition.TypeIndex)).FullNameFromRef(),*/
+                t.BaseType.GetCSharpSourceString().Clean(),
                 t.BaseType.Namespace.Clean()
                 ) : null,
             t.IsValueType || t.IsEnumType,

@@ -65,28 +65,6 @@ export class Pointer<T extends Il2CppObject> {
 
 const b = recast.types.builders;
 
-
-/*function normalize(name: string, keepDots = false) {
-    name = name.replace(/[=/`<>\-|]/g, "_");
-    if (!keepDots) {
-        name = name.replace(/[.]/g, "_");
-    }
-    if (name.charAt(0) >= '0' && name.charAt(0) <= '9') {
-        name = "_" + name;
-    }
-    // bad idea o_o
-    let ptrcount = name.replace(/[^*]/g, "").length;
-    name = name.replaceAll("*", "");
-    for (let i = 0; i < ptrcount; i++) {
-        name = "Pointer<" + name + ">";
-    }
-    return name;
-}*/
-
-function getFullName(t: Il2CppType): string {
-    return getModifiedNamespace(t) + "." + t.Name;
-}
-
 function getModifiedNamespace(t: Il2CppType): string {
     return t.Namespace.length > 0 ? "Il2Cpp." + t.Namespace : "Il2Cpp";
 }
