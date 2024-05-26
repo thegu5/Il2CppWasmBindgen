@@ -53,15 +53,12 @@ Cpp2IlApi.InitializeLibCpp2Il(args[0],
 Console.WriteLine("Parsing all classes...");
 List<Il2CppClass> classDict = [];
 
-foreach (var t in Cpp2IlApi.CurrentAppContext.AllTypes.Where(t => t.DeclaringType is null && t.GenericParameterCount == 0))
-{
-    classDict.Add(t);
-}
+classDict.AddRange(Cpp2IlApi.CurrentAppContext.AllTypes
+    .Where(t => t.DeclaringType is null && t.GenericParameterCount == 0).Select(t => (Il2CppClass)t));
 
-foreach (var t in Cpp2IlApi.CurrentAppContext.ConcreteGenericMethodsByRef.Values.DistinctBy(ctx => ctx.DeclaringType.FullName))
-{
-    classDict.Add(t.DeclaringType);
-}
+classDict.AddRange(Cpp2IlApi.CurrentAppContext.ConcreteGenericMethodsByRef.Values.Select(t => t.DeclaringType)
+    .Where(t => t.DeclaringType is null).DistinctBy(ctx => ctx.FullName)
+    .Select(t => (Il2CppClass)t));
 
 #region Serialize
 
@@ -114,7 +111,7 @@ internal static class Extensions
         if (!t.isType)
             return toret + t.variableGenericParamName.Clean() + (t.isPointer ? ":" : "");
 
-        if (!t.isGenericType)
+        if (!t.isGenericType || t.genericParams.Length == 0)
             return toret + t.baseType!.FullName!.Clean() + (t.isPointer ? ">" : ""); // property accessors
 
         var builder = new StringBuilder(toret + (ns ? t.baseType!.FullName.Clean() : t.baseType!.Name.Clean()) + "<");
@@ -140,11 +137,11 @@ internal static class Extensions
 
     public static string ModifiedSourceString(this TypeAnalysisContext t, bool withNamespace = true)
     {
-        if (t.Name.Contains("IKeyGetter")) Debugger.Break();
         switch (t)
         {
             case GenericInstanceTypeAnalysisContext gent:
             {
+                if (gent.GenericArguments.Count == 0) break;
                 var sb = new StringBuilder();
                 sb.Append(gent.GenericType.ModifiedSourceString());
                 sb.Append('<');
@@ -158,6 +155,7 @@ internal static class Extensions
 
                     sb.Append(genericArgument.ModifiedSourceString());
                 }
+
                 sb.Append('>');
                 return sb.ToString();
             }
@@ -175,15 +173,14 @@ internal static class Extensions
             return withNamespace ? t.Definition.FullName!.Clean() : t.Definition.Name!.Clean();
 
         var ret = new StringBuilder();
-        if(t.OverrideNs != null && withNamespace)
+        if (t.OverrideNs != null && withNamespace)
             ret.Append(t.OverrideNs).Append('.');
-        
+
         ret.Append(t.Name);
 
         return ret.ToString().Clean();
     }
 }
-
 
 #region Serializable data types
 
@@ -231,25 +228,20 @@ public record Il2CppClass(
 {
     public static implicit operator Il2CppClass(TypeAnalysisContext t)
     {
-        if (t.FullName == "System.Threading.SemaphoreSlim.TaskNode")
-        {
-            Console.WriteLine(t.GetType());
-            Console.WriteLine(t.Definition);
-            Console.WriteLine(t.BaseType);
-            Console.WriteLine(t.BaseType.Definition);
-        }
         return new Il2CppClass(
             new Il2CppType(
                 t.ModifiedSourceString(false),
                 t.ModifiedSourceString(),
                 t.Namespace
-                ),
+            ),
             //null
-            t.BaseType is not null ? new Il2CppType(
-                t.BaseType.ModifiedSourceString(false),
-                t.BaseType.ModifiedSourceString(),
-                t.BaseType.Namespace.Clean()
-                ) : null,
+            t.BaseType is not null
+                ? new Il2CppType(
+                    t.BaseType.ModifiedSourceString(false),
+                    t.BaseType.ModifiedSourceString(),
+                    t.BaseType.Namespace.Clean()
+                )
+                : null,
             t.IsValueType || t.IsEnumType,
             t.GetInheritanceDepth(),
             t.Fields.Select(f => new Il2CppField(
@@ -280,5 +272,4 @@ public record Il2CppClass(
         );
     }
 }
-
 #endregion
