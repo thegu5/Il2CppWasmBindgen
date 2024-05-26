@@ -107,7 +107,7 @@ function classToSyntax(data: Il2CppClass): recast.types.namedTypes.ClassDeclarat
         );
         prop.typeAnnotation = b.tsTypeAnnotation(b.tsAnyKeyword());*/
         let prop = b.classProperty(
-            b.identifier(nc.Type.Name),
+            b.identifier(nc.Type.Name.split("<")[0]),
             classDeclarationToExpression(classToSyntax(nc))
         );
         // TODO: do something sane like split up each class into a es module instead of this annoying hack

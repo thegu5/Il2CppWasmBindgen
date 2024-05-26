@@ -138,54 +138,44 @@ internal static class Extensions
         return Regex.Replace(Regex.Replace(str, @"[^$_0-9a-zA-Z\.\/]", "_"), @"\/([^\/<>\s]+)", "['$1']");
     }
 
-    public static string ModifiedSourceString(this TypeAnalysisContext t)
+    public static string ModifiedSourceString(this TypeAnalysisContext t, bool withNamespace = true)
     {
         if (t.Name.Contains("IKeyGetter")) Debugger.Break();
-        if (t is GenericInstanceTypeAnalysisContext gent)
+        switch (t)
         {
-            var sb = new StringBuilder();
-
-            sb.Append(gent.GenericType.ModifiedSourceString());
-            sb.Append('<');
-            var first = true;
-            foreach (var genericArgument in gent.GenericArguments)
+            case GenericInstanceTypeAnalysisContext gent:
             {
-                if (!first)
-                    sb.Append(", ");
-                else
-                    first = false;
+                var sb = new StringBuilder();
+                sb.Append(gent.GenericType.ModifiedSourceString());
+                sb.Append('<');
+                var first = true;
+                foreach (var genericArgument in gent.GenericArguments)
+                {
+                    if (!first)
+                        sb.Append(", ");
+                    else
+                        first = false;
 
-                sb.Append(genericArgument.ModifiedSourceString());
+                    sb.Append(genericArgument.ModifiedSourceString());
+                }
+                sb.Append('>');
+                return sb.ToString();
             }
-        
-            sb.Append('>');
-        
-            return sb.ToString();
-        }
-        if (t is PointerTypeAnalysisContext ptrt)
-        {
-            return "Pointer<" + ptrt.ElementType.ModifiedSourceString() + ">";
-        }
-        if (t is SzArrayTypeAnalysisContext szat)
-        {
-            return szat.ElementType.ModifiedSourceString() + "[]";
-        }
-        if (t is ArrayTypeAnalysisContext at)
-        {
-            return at.ElementType.ModifiedSourceString() + "[]".Repeat(at.Rank);
+            case PointerTypeAnalysisContext ptrt:
+                return "Pointer<" + ptrt.ElementType.ModifiedSourceString() + ">";
+            case SzArrayTypeAnalysisContext szat:
+                return szat.ElementType.ModifiedSourceString() + "[]";
+            case ArrayTypeAnalysisContext at:
+                return at.ElementType.ModifiedSourceString() + "[]".Repeat(at.Rank);
+            case GenericParameterTypeAnalysisContext genp:
+                return genp.DefaultName;
         }
 
-        if (t is GenericParameterTypeAnalysisContext genp)
-        {
-            return genp.DefaultName;
-        }
-        
-        
         if (t.Definition != null)
-            return t.Definition.FullName!.Clean();
+            return withNamespace ? t.Definition.FullName!.Clean() : t.Definition.Name!.Clean();
 
         var ret = new StringBuilder();
-        if(t.OverrideNs != null)
+        if(t.OverrideNs != null && withNamespace)
             ret.Append(t.OverrideNs).Append('.');
         
         ret.Append(t.Name);
@@ -250,13 +240,13 @@ public record Il2CppClass(
         }
         return new Il2CppClass(
             new Il2CppType(
-                t is GenericInstanceTypeAnalysisContext gent ? gent.GenericType.Name.Clean() : t.Name.Clean(),
+                t.ModifiedSourceString(false),
                 t.ModifiedSourceString(),
                 t.Namespace
                 ),
             //null
             t.BaseType is not null ? new Il2CppType(
-                t.BaseType.Name.Clean(),
+                t.BaseType.ModifiedSourceString(false),
                 t.BaseType.ModifiedSourceString(),
                 t.BaseType.Namespace.Clean()
                 ) : null,
