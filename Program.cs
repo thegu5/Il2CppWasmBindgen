@@ -95,31 +95,6 @@ internal static class Extensions
         return counter;
     }
 
-    /*public static List<string> GetAllDeps(this TypeAnalysisContext type)
-    {
-        var toret = new List<string>();
-        if (type.BaseType is not null)
-        {
-            var rep = Regex.Replace(type.BaseType.UltimateDeclaringType.Name, @"(`\d)(<.+>$)", "$1")
-                .Replace("[]", "");
-            toret.Add(rep);
-            /*if (type.BaseType.Name.Contains('['))
-            {
-                Console.WriteLine("From " + type.BaseType.Name + " to " + rep);
-            }#1#
-        }
-
-        var counter = 0;
-        foreach (var nested in type.NestedTypes)
-        {
-            counter++;
-            toret = toret.Concat(nested.GetAllDeps()).ToList();
-        }
-
-        // if (counter > 1) Debugger.Break();
-        return toret;
-    }*/
-
     public static int? GetWasmIndex(this Il2CppMethodDefinition method)
     {
         var wasmdef = WasmUtils.TryGetWasmDefinition(method);
@@ -162,12 +137,66 @@ internal static class Extensions
 
         return Regex.Replace(Regex.Replace(str, @"[^$_0-9a-zA-Z\.\/]", "_"), @"\/([^\/<>\s]+)", "['$1']");
     }
+
+    public static string ModifiedSourceString(this TypeAnalysisContext t)
+    {
+        if (t.Name.Contains("IKeyGetter")) Debugger.Break();
+        if (t is GenericInstanceTypeAnalysisContext gent)
+        {
+            var sb = new StringBuilder();
+
+            sb.Append(gent.GenericType.ModifiedSourceString());
+            sb.Append('<');
+            var first = true;
+            foreach (var genericArgument in gent.GenericArguments)
+            {
+                if (!first)
+                    sb.Append(", ");
+                else
+                    first = false;
+
+                sb.Append(genericArgument.ModifiedSourceString());
+            }
+        
+            sb.Append('>');
+        
+            return sb.ToString();
+        }
+        if (t is PointerTypeAnalysisContext ptrt)
+        {
+            return "Pointer<" + ptrt.ElementType.ModifiedSourceString() + ">";
+        }
+        if (t is SzArrayTypeAnalysisContext szat)
+        {
+            return szat.ElementType.ModifiedSourceString() + "[]";
+        }
+        if (t is ArrayTypeAnalysisContext at)
+        {
+            return at.ElementType.ModifiedSourceString() + "[]".Repeat(at.Rank);
+        }
+
+        if (t is GenericParameterTypeAnalysisContext genp)
+        {
+            return genp.DefaultName;
+        }
+        
+        
+        if (t.Definition != null)
+            return t.Definition.FullName!.Clean();
+
+        var ret = new StringBuilder();
+        if(t.OverrideNs != null)
+            ret.Append(t.OverrideNs).Append('.');
+        
+        ret.Append(t.Name);
+
+        return ret.ToString().Clean();
+    }
 }
 
 
 #region Serializable data types
 
-// var treeRoot = TypeTreeBuilder.BuildTree(classDict);
 [JsonSourceGenerationOptions(WriteIndented = true)]
 [JsonSerializable(typeof(IOrderedEnumerable<Il2CppClass>))]
 internal partial class SourceGenerationContext : JsonSerializerContext;
@@ -212,25 +241,23 @@ public record Il2CppClass(
 {
     public static implicit operator Il2CppClass(TypeAnalysisContext t)
     {
-        if (t.Name == "<>c<Background>")
+        if (t.FullName == "System.Threading.SemaphoreSlim.TaskNode")
         {
-            Console.WriteLine("dt " + t.DeclaringType);
-            Console.WriteLine("bt " + t.BaseType);
-            Console.WriteLine((t as GenericInstanceTypeAnalysisContext).GenericType);
-            Console.WriteLine(t.GenericParameterCount);
+            Console.WriteLine(t.GetType());
             Console.WriteLine(t.Definition);
+            Console.WriteLine(t.BaseType);
+            Console.WriteLine(t.BaseType.Definition);
         }
         return new Il2CppClass(
             new Il2CppType(
-                t.Name.Clean(),
-                t.GetCSharpSourceString().Clean(),
+                t is GenericInstanceTypeAnalysisContext gent ? gent.GenericType.Name.Clean() : t.Name.Clean(),
+                t.ModifiedSourceString(),
                 t.Namespace
                 ),
             //null
             t.BaseType is not null ? new Il2CppType(
                 t.BaseType.Name.Clean(),
-                /*LibCpp2ILUtils.GetTypeReflectionData(LibCpp2IlMain.Binary!.GetType(t.Definition.TypeIndex)).FullNameFromRef(),*/
-                t.BaseType.GetCSharpSourceString().Clean(),
+                t.BaseType.ModifiedSourceString(),
                 t.BaseType.Namespace.Clean()
                 ) : null,
             t.IsValueType || t.IsEnumType,
