@@ -1,5 +1,10 @@
-﻿using System.Diagnostics;
+﻿using System.Collections;
+using System.Diagnostics;
+using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Runtime.Loader;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -8,11 +13,17 @@ using Cpp2IL.Core;
 using Cpp2IL.Core.Api;
 using Cpp2IL.Core.InstructionSets;
 using Cpp2IL.Core.Model.Contexts;
+using Cpp2IL.Core.OutputFormats;
 using Cpp2IL.Core.Utils;
+using HarmonyLib;
+using Il2CppTsBindgen;
 using LibCpp2IL;
 using LibCpp2IL.Metadata;
 using LibCpp2IL.Reflection;
 using LibCpp2IL.Wasm;
+using Reinforced.Typings;
+using Reinforced.Typings.Attributes;
+using TypeExtensions = Reinforced.Typings.TypeExtensions;
 
 #region proc arg handling
 
@@ -39,7 +50,8 @@ if (!File.Exists(args[1]))
 
 #endregion
 
-#region Cpp2IL Setup
+/*
+#region Cpp2IL Assembly Generation
 
 Console.WriteLine("Setting up Cpp2IL...");
 InstructionSetRegistry.RegisterInstructionSet<WasmInstructionSet>(DefaultInstructionSets.WASM);
@@ -48,9 +60,51 @@ Cpp2IlApi.InitializeLibCpp2Il(args[0],
     args[1],
     new UnityVersion(2023, 2, 5), true);
 
-#endregion
+// ProcessingLayerRegistry.Register<JSNamingProcessingLayer>();
 
-Console.WriteLine("Parsing all classes...");
+// new JSNamingProcessingLayer().Process(Cpp2IlApi.CurrentAppContext);
+// new StableRenamingProcessingLayer().Process(Cpp2IlApi.CurrentAppContext);
+
+new AsmResolverDllOutputFormatDefault().DoOutput(Cpp2IlApi.CurrentAppContext,
+    Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out"));
+
+#endregion
+*/
+
+// new Harmony("Il2CppTsBindgen").PatchAll();
+
+var mlc = new MetadataLoadContext(new PathAssemblyResolver(Directory.GetFiles(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out"), "*.dll")));
+
+var mainAssembly = mlc.LoadFromAssemblyName("Assembly-CSharp");
+
+// ExportContext ctx =new ExportContext(Directory.EnumerateFiles(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out"), "*.dll").Select(Assembly.LoadFrom).ToArray());
+
+var ctx = new ExportContext([]);
+Console.WriteLine(ctx.SourceAssemblies.Length);
+ctx.Hierarchical = true;
+ctx.TargetDirectory = Path.Combine(Directory.GetCurrentDirectory(), "bindings");
+ctx.Global.UseModules = true;
+
+Directory.CreateDirectory(Path.Combine(Directory.GetCurrentDirectory(), "bindings"));
+var exporter = new TsExporter(ctx);
+exporter.Initialize();
+// why
+Debugger.Break();
+exporter.Context.GetType().GetField("TypesToFilesMap").SetValue(exporter.Context,
+        mlc.GetAssemblies().SelectMany<Assembly, Type>(c =>
+                c.GetTypes())
+            .Distinct().ToList()
+    // .Where(d => exporter.Context.Project.Blueprint(d).ThirdParty == null)
+    .GroupBy<Type, string>(c => (string)exporter.Context.GetType().GetRuntimeMethods().ElementAt(23).Invoke(exporter.Context, [c, false]))
+    .ToDictionary<IGrouping<string, Type>, string, IEnumerable<Type>>(
+        c => c.Key,
+        c => c.AsEnumerable()));
+
+exporter.Export();
+Process.GetCurrentProcess().Kill();
+// end
+
+Console.WriteLine("Parsing all classes...");        
 List<Il2CppClass> classDict = [];
 
 classDict.AddRange(Cpp2IlApi.CurrentAppContext.AllTypes
@@ -63,12 +117,12 @@ classDict.AddRange(Cpp2IlApi.CurrentAppContext.ConcreteGenericMethodsByRef.Value
 #region Serialize
 
 Console.WriteLine("Serializing to " + args[2] + "...");
-var sorted = from entry in classDict orderby entry.InheritanceDepth ascending select entry;
+var sorted = from entry in classDict orderby entry.InheritanceDepth select entry;
 
 var opts = new JsonSerializerOptions
 {
     ReferenceHandler = ReferenceHandler.IgnoreCycles,
-    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     TypeInfoResolver = SourceGenerationContext.Default
 };
 File.WriteAllText(args[2],
@@ -77,6 +131,33 @@ File.WriteAllText(args[2],
 #endregion
 
 Console.WriteLine("Done!");
+// tomfoolery
+
+/*[HarmonyPatch(typeof(Attribute))]
+[HarmonyPatch(nameof(Attribute.GetCustomAttribute))]
+[HarmonyPatch([typeof(MemberInfo), typeof(Type), typeof(bool)])]
+class Patch
+{
+    static bool Prefix(ref Attribute? __result)
+    {
+        Console.WriteLine("PATCH CALLED");
+        __result = null;
+        return false;
+    }
+}
+
+[HarmonyPatch(typeof(Attribute))]
+[HarmonyPatch(nameof(Attribute.GetCustomAttributes))]
+[HarmonyPatch([typeof(MemberInfo), typeof(Type), typeof(bool)])]
+class Patch2
+{
+    static bool Prefix(ref Attribute[] __result)
+    {
+        Console.WriteLine("PATCH2 CALLED");
+        __result = [];
+        return true;
+    }
+}*/
 
 internal static class Extensions
 {
@@ -260,7 +341,7 @@ public record Il2CppClass(
                 m.MethodName.Clean(),
                 m.Parameters.Select(p => new Il2CppParameter(p.Name.Clean(), new Il2CppType(
                     LibCpp2ILUtils.GetTypeReflectionData(p.ParameterType).FullNameFromRef(false),
-                    LibCpp2ILUtils.GetTypeReflectionData(p.ParameterType).FullNameFromRef(true),
+                    LibCpp2ILUtils.GetTypeReflectionData(p.ParameterType).FullNameFromRef(),
                     p.ParameterTypeInfoProvider.TypeNamespace
                 ))).ToArray(),
                 m.ReturnType.OriginalTypeName == "Void" ? null : /*m.ReturnType.ToIl2CppType()*/null,
@@ -272,4 +353,6 @@ public record Il2CppClass(
         );
     }
 }
+
 #endregion
+
