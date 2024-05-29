@@ -15,7 +15,6 @@ using Cpp2IL.Core.InstructionSets;
 using Cpp2IL.Core.Model.Contexts;
 using Cpp2IL.Core.OutputFormats;
 using Cpp2IL.Core.Utils;
-using HarmonyLib;
 using Il2CppTsBindgen;
 using LibCpp2IL;
 using LibCpp2IL.Metadata;
@@ -23,6 +22,7 @@ using LibCpp2IL.Reflection;
 using LibCpp2IL.Wasm;
 using Reinforced.Typings;
 using Reinforced.Typings.Attributes;
+using Reinforced.Typings.Fluent;
 using TypeExtensions = Reinforced.Typings.TypeExtensions;
 
 #region proc arg handling
@@ -71,40 +71,45 @@ new AsmResolverDllOutputFormatDefault().DoOutput(Cpp2IlApi.CurrentAppContext,
 #endregion
 */
 
-// new Harmony("Il2CppTsBindgen").PatchAll();
 
-var mlc = new MetadataLoadContext(new PathAssemblyResolver(Directory.GetFiles(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out"), "*.dll")));
-
-var mainAssembly = mlc.LoadFromAssemblyName("Assembly-CSharp");
-
-// ExportContext ctx =new ExportContext(Directory.EnumerateFiles(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out"), "*.dll").Select(Assembly.LoadFrom).ToArray());
-
-var ctx = new ExportContext([]);
-Console.WriteLine(ctx.SourceAssemblies.Length);
-ctx.Hierarchical = true;
-ctx.TargetDirectory = Path.Combine(Directory.GetCurrentDirectory(), "bindings");
-ctx.Global.UseModules = true;
-
-Directory.CreateDirectory(Path.Combine(Directory.GetCurrentDirectory(), "bindings"));
-var exporter = new TsExporter(ctx);
-exporter.Initialize();
-// why
+// var mlc = new MetadataLoadContext(new PathAssemblyResolver(Directory.GetFiles(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out"), "*.dll")));
+// var mainAssembly = mlc.LoadFromAssemblyName("Assembly-CSharp");
+// var assemblyLoadContext = new AssemblyLoadContext("main");
+// var assemblies = Directory.EnumerateFiles(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out")).Where(p => !p.EndsWith("mscorlib.dll")).Select(assemblyLoadContext.LoadFromAssemblyPath);
+var targetDirectory = Path.Combine(Directory.GetCurrentDirectory(), "bindings");
+var targetFile = Path.Combine(targetDirectory, "single.ts");
+Directory.CreateDirectory(targetDirectory);
 Debugger.Break();
-exporter.Context.GetType().GetField("TypesToFilesMap").SetValue(exporter.Context,
-        mlc.GetAssemblies().SelectMany<Assembly, Type>(c =>
-                c.GetTypes())
-            .Distinct().ToList()
-    // .Where(d => exporter.Context.Project.Blueprint(d).ThirdParty == null)
-    .GroupBy<Type, string>(c => (string)exporter.Context.GetType().GetRuntimeMethods().ElementAt(23).Invoke(exporter.Context, [c, false]))
-    .ToDictionary<IGrouping<string, Type>, string, IEnumerable<Type>>(
-        c => c.Key,
-        c => c.AsEnumerable()));
+// var assemblyArr = assemblies.ToArray();
+var ctx = new ExportContext([Assembly.GetCallingAssembly()])
+{
+    ConfigurationMethod = builder =>
+    {
+        builder.Global(x => x.UseModules());
+        try
+        {
+            // var types = assemblyArr.First(a => a.Location.EndsWith("Assembly-CSharp.dll")).DefinedTypes;
+            // builder.ExportAsClasses(types);
+            foreach (var t in Assembly.GetCallingAssembly().DefinedTypes)
+            {
+                builder = builder.GetType().invoke;
+            }
+        }
+        catch (Exception e)
+        {
+            Debugger.Break();
+        }
+    },
+    Hierarchical = true,
+    TargetDirectory = targetDirectory,
+    TargetFile = targetFile
+};
+new TsExporter(ctx).Export();
 
-exporter.Export();
 Process.GetCurrentProcess().Kill();
 // end
 
-Console.WriteLine("Parsing all classes...");        
+Console.WriteLine("Parsing all classes...");
 List<Il2CppClass> classDict = [];
 
 classDict.AddRange(Cpp2IlApi.CurrentAppContext.AllTypes
@@ -131,33 +136,6 @@ File.WriteAllText(args[2],
 #endregion
 
 Console.WriteLine("Done!");
-// tomfoolery
-
-/*[HarmonyPatch(typeof(Attribute))]
-[HarmonyPatch(nameof(Attribute.GetCustomAttribute))]
-[HarmonyPatch([typeof(MemberInfo), typeof(Type), typeof(bool)])]
-class Patch
-{
-    static bool Prefix(ref Attribute? __result)
-    {
-        Console.WriteLine("PATCH CALLED");
-        __result = null;
-        return false;
-    }
-}
-
-[HarmonyPatch(typeof(Attribute))]
-[HarmonyPatch(nameof(Attribute.GetCustomAttributes))]
-[HarmonyPatch([typeof(MemberInfo), typeof(Type), typeof(bool)])]
-class Patch2
-{
-    static bool Prefix(ref Attribute[] __result)
-    {
-        Console.WriteLine("PATCH2 CALLED");
-        __result = [];
-        return true;
-    }
-}*/
 
 internal static class Extensions
 {
@@ -355,4 +333,3 @@ public record Il2CppClass(
 }
 
 #endregion
-
