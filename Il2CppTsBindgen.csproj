@@ -5,15 +5,13 @@
         <TargetFramework>net8.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
-        <PublishAot>false</PublishAot>
+        <PublishAot>true</PublishAot>
         <InvariantGlobalization>true</InvariantGlobalization>
         <RootNamespace>Il2CppTsBindgen</RootNamespace>
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="Reinforced.Typings" Version="1.6.3" />
       <PackageReference Include="Samboy063.Cpp2IL.Core" Version="2022.1.0-development.972" />
-      <PackageReference Include="System.Reflection.MetadataLoadContext" Version="8.0.0" />
     </ItemGroup>
 
 </Project>

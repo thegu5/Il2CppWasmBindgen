@@ -1,10 +1,5 @@
-﻿using System.Collections;
-using System.Diagnostics;
-using System.Reflection;
-using System.Runtime.InteropServices;
-using System.Runtime.Loader;
+﻿using System.Diagnostics;
 using System.Text;
-using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -13,17 +8,11 @@ using Cpp2IL.Core;
 using Cpp2IL.Core.Api;
 using Cpp2IL.Core.InstructionSets;
 using Cpp2IL.Core.Model.Contexts;
-using Cpp2IL.Core.OutputFormats;
 using Cpp2IL.Core.Utils;
-using Il2CppTsBindgen;
 using LibCpp2IL;
 using LibCpp2IL.Metadata;
 using LibCpp2IL.Reflection;
 using LibCpp2IL.Wasm;
-using Reinforced.Typings;
-using Reinforced.Typings.Attributes;
-using Reinforced.Typings.Fluent;
-using TypeExtensions = Reinforced.Typings.TypeExtensions;
 
 #region proc arg handling
 
@@ -50,8 +39,7 @@ if (!File.Exists(args[1]))
 
 #endregion
 
-/*
-#region Cpp2IL Assembly Generation
+#region Cpp2IL Setup
 
 Console.WriteLine("Setting up Cpp2IL...");
 InstructionSetRegistry.RegisterInstructionSet<WasmInstructionSet>(DefaultInstructionSets.WASM);
@@ -60,54 +48,7 @@ Cpp2IlApi.InitializeLibCpp2Il(args[0],
     args[1],
     new UnityVersion(2023, 2, 5), true);
 
-// ProcessingLayerRegistry.Register<JSNamingProcessingLayer>();
-
-// new JSNamingProcessingLayer().Process(Cpp2IlApi.CurrentAppContext);
-// new StableRenamingProcessingLayer().Process(Cpp2IlApi.CurrentAppContext);
-
-new AsmResolverDllOutputFormatDefault().DoOutput(Cpp2IlApi.CurrentAppContext,
-    Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out"));
-
 #endregion
-*/
-
-
-// var mlc = new MetadataLoadContext(new PathAssemblyResolver(Directory.GetFiles(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out"), "*.dll")));
-// var mainAssembly = mlc.LoadFromAssemblyName("Assembly-CSharp");
-// var assemblyLoadContext = new AssemblyLoadContext("main");
-// var assemblies = Directory.EnumerateFiles(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out")).Where(p => !p.EndsWith("mscorlib.dll")).Select(assemblyLoadContext.LoadFromAssemblyPath);
-var targetDirectory = Path.Combine(Directory.GetCurrentDirectory(), "bindings");
-var targetFile = Path.Combine(targetDirectory, "single.ts");
-Directory.CreateDirectory(targetDirectory);
-Debugger.Break();
-// var assemblyArr = assemblies.ToArray();
-var ctx = new ExportContext([Assembly.GetCallingAssembly()])
-{
-    ConfigurationMethod = builder =>
-    {
-        builder.Global(x => x.UseModules());
-        try
-        {
-            // var types = assemblyArr.First(a => a.Location.EndsWith("Assembly-CSharp.dll")).DefinedTypes;
-            // builder.ExportAsClasses(types);
-            foreach (var t in Assembly.GetCallingAssembly().DefinedTypes)
-            {
-                builder = builder.GetType().invoke;
-            }
-        }
-        catch (Exception e)
-        {
-            Debugger.Break();
-        }
-    },
-    Hierarchical = true,
-    TargetDirectory = targetDirectory,
-    TargetFile = targetFile
-};
-new TsExporter(ctx).Export();
-
-Process.GetCurrentProcess().Kill();
-// end
 
 Console.WriteLine("Parsing all classes...");
 List<Il2CppClass> classDict = [];
@@ -122,12 +63,12 @@ classDict.AddRange(Cpp2IlApi.CurrentAppContext.ConcreteGenericMethodsByRef.Value
 #region Serialize
 
 Console.WriteLine("Serializing to " + args[2] + "...");
-var sorted = from entry in classDict orderby entry.InheritanceDepth select entry;
+var sorted = from entry in classDict orderby entry.InheritanceDepth ascending select entry;
 
 var opts = new JsonSerializerOptions
 {
     ReferenceHandler = ReferenceHandler.IgnoreCycles,
-    Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     TypeInfoResolver = SourceGenerationContext.Default
 };
 File.WriteAllText(args[2],
@@ -319,7 +260,7 @@ public record Il2CppClass(
                 m.MethodName.Clean(),
                 m.Parameters.Select(p => new Il2CppParameter(p.Name.Clean(), new Il2CppType(
                     LibCpp2ILUtils.GetTypeReflectionData(p.ParameterType).FullNameFromRef(false),
-                    LibCpp2ILUtils.GetTypeReflectionData(p.ParameterType).FullNameFromRef(),
+                    LibCpp2ILUtils.GetTypeReflectionData(p.ParameterType).FullNameFromRef(true),
                     p.ParameterTypeInfoProvider.TypeNamespace
                 ))).ToArray(),
                 m.ReturnType.OriginalTypeName == "Void" ? null : /*m.ReturnType.ToIl2CppType()*/null,
@@ -331,5 +272,4 @@ public record Il2CppClass(
         );
     }
 }
-
 #endregion
