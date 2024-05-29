@@ -7,5 +7,12 @@ Current project status: ~~C# side done for now~~ (I lied), beginning to work on 
 
 Very much open to contributions :-)
 
-## Known Issues
+## current todos
+- fix fully shared generic classes using their namespace in their type name? - c#
+- gather separated generic class impls into one (or, unique naming if offsets change) - c#
+- `Il2Cpp` namespace prepend for type annotations - ts
+- recursive nested class resolving - c# & ts
+  - and beyond..
+
+## wontfix
 - Nested classes don't extend classes they inherit from (typecast is needed to access parent members)
