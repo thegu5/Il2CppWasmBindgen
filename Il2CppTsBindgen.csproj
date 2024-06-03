@@ -8,10 +8,19 @@
         <PublishAot>true</PublishAot>
         <InvariantGlobalization>true</InvariantGlobalization>
         <RootNamespace>Il2CppTsBindgen</RootNamespace>
+        <TypeScriptCompileBlocked>true</TypeScriptCompileBlocked>
     </PropertyGroup>
 
     <ItemGroup>
+      <PackageReference Include="Microsoft.ClearScript.V8" Version="7.4.5" />
+      <PackageReference Include="Microsoft.ClearScript.V8.Native.linux-x64" Version="7.4.5" />
+      <PackageReference Include="React.Core" Version="5.2.12" />
       <PackageReference Include="Samboy063.Cpp2IL.Core" Version="2022.1.0-development.972" />
+      <PackageReference Include="Serenity.TypeScript" Version="1.0.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Folder Include="node_modules\typescript\lib\" />
     </ItemGroup>
 
 </Project>

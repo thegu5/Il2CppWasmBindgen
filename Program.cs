@@ -1,18 +1,19 @@
 ﻿using System.Diagnostics;
 using System.Text;
-using System.Text.Json;
-using System.Text.Json.Serialization;
-using System.Text.RegularExpressions;
+using AsmResolver.DotNet;
+using AsmResolver.DotNet.Signatures.Types;
 using AssetRipper.Primitives;
 using Cpp2IL.Core;
 using Cpp2IL.Core.Api;
 using Cpp2IL.Core.InstructionSets;
-using Cpp2IL.Core.Model.Contexts;
-using Cpp2IL.Core.Utils;
+using Cpp2IL.Core.OutputFormats;
 using LibCpp2IL;
-using LibCpp2IL.Metadata;
-using LibCpp2IL.Reflection;
-using LibCpp2IL.Wasm;
+using Microsoft.ClearScript;
+using Microsoft.ClearScript.V8;
+using React;
+using Serenity.TypeScript;
+
+#pragma warning disable IL2026
 
 #region proc arg handling
 
@@ -21,7 +22,7 @@ if (args.Length != 3)
     Console.OpenStandardError().Write("Make sure to provide three arguments:\n"u8);
     Console.OpenStandardError().Write("1. WASM file\n"u8);
     Console.OpenStandardError().Write("2. global-metadata.dat file\n"u8);
-    Console.OpenStandardError().Write("3. Output file (probably ending in .json)\n"u8);
+    Console.OpenStandardError().Write("3. Output file (probably ending in .ts)\n"u8);
     Process.GetCurrentProcess().Kill();
 }
 
@@ -39,6 +40,7 @@ if (!File.Exists(args[1]))
 
 #endregion
 
+/*
 #region Cpp2IL Setup
 
 Console.WriteLine("Setting up Cpp2IL...");
@@ -50,226 +52,110 @@ Cpp2IlApi.InitializeLibCpp2Il(args[0],
 
 #endregion
 
-Console.WriteLine("Parsing all classes...");
-List<Il2CppClass> classDict = [];
 
-classDict.AddRange(Cpp2IlApi.CurrentAppContext.AllTypes
-    .Where(t => t.DeclaringType is null && t.GenericParameterCount == 0).Select(t => (Il2CppClass)t));
+Console.WriteLine("Building assemblies...");
+Directory.CreateDirectory(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out"));
+new AsmResolverDllOutputFormatDefault().BuildAssemblies(Cpp2IlApi.CurrentAppContext).ForEach(asm =>
+    asm.Write(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out", asm.Name)));
+    */
+Console.WriteLine("Reading assemblies back from disc...");
+var types = Directory.GetFiles(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out"))
+        .Select(ModuleDefinition.FromFile).SelectMany(m => m.TopLevelTypes)
+    ;
 
-classDict.AddRange(Cpp2IlApi.CurrentAppContext.ConcreteGenericMethodsByRef.Values.Select(t => t.DeclaringType)
-    .Where(t => t.DeclaringType is null).DistinctBy(ctx => ctx.FullName)
-    .Select(t => (Il2CppClass)t));
+var babel = ReactEnvironment.Current.Babel;
 
-#region Serialize
 
-Console.WriteLine("Serializing to " + args[2] + "...");
-var sorted = from entry in classDict orderby entry.InheritanceDepth ascending select entry;
-
-var opts = new JsonSerializerOptions
+Helpers.Engine.AddHostObject("types", types);
+var ts = Helpers.ts;
+var console = Helpers.console;
+// Helpers.Engine.Execute("let statements = [];");
+var resultFile = ts.createSourceFile("testing.ts", "", ts.ScriptTarget.ESNext, false);
+var printer = ts.createPrinter();
+var result = new StringBuilder();
+foreach (var type in types)
 {
-    ReferenceHandler = ReferenceHandler.IgnoreCycles,
-    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-    TypeInfoResolver = SourceGenerationContext.Default
-};
-File.WriteAllText(args[2],
-    JsonSerializer.Serialize<IOrderedEnumerable<Il2CppClass>>(sorted, opts));
-
-#endregion
-
-Console.WriteLine("Done!");
-
-internal static class Extensions
-{
-    public static int GetInheritanceDepth(this TypeAnalysisContext type)
-    {
-        var counter = 0;
-        while (type.BaseType is not null)
-        {
-            type = type.BaseType;
-            counter++;
-        }
-
-        return counter;
-    }
-
-    public static int? GetWasmIndex(this Il2CppMethodDefinition method)
-    {
-        var wasmdef = WasmUtils.TryGetWasmDefinition(method);
-        if (wasmdef is null) return null;
-        return wasmdef.IsImport
-            ? ((WasmFile)LibCpp2IlMain.Binary!).FunctionTable.IndexOf(wasmdef)
-            : wasmdef.FunctionTableIndex;
-    }
-
-    public static string FullNameFromRef(this Il2CppTypeReflectionData t, bool ns = true)
-    {
-        var toret = "";
-        if (t.isPointer) toret += "Pointer<";
-        if (t.isArray)
-            return toret + t.arrayType.FullNameFromRef() + "[]".Repeat(t.arrayRank) + (t.isPointer ? ">" : "");
-
-        if (!t.isType)
-            return toret + t.variableGenericParamName.Clean() + (t.isPointer ? ":" : "");
-
-        if (!t.isGenericType || t.genericParams.Length == 0)
-            return toret + t.baseType!.FullName!.Clean() + (t.isPointer ? ">" : ""); // property accessors
-
-        var builder = new StringBuilder(toret + (ns ? t.baseType!.FullName.Clean() : t.baseType!.Name.Clean()) + "<");
-        foreach (var genericParam in t.genericParams)
-        {
-            builder.Append(genericParam.FullNameFromRef()).Append(", ");
-        }
-
-        builder.Remove(builder.Length - 2, 2);
-        builder.Append(">");
-        return builder + (t.isPointer ? ">" : "");
-    }
-
-    public static string Clean(this string str)
-    {
-        if (str.Length > 0 && char.IsDigit(str[0]))
-        {
-            str = "_" + str;
-        }
-
-        return Regex.Replace(Regex.Replace(str, @"[^$_0-9a-zA-Z\.\/]", "_"), @"\/([^\/<>\s]+)", "['$1']");
-    }
-
-    public static string ModifiedSourceString(this TypeAnalysisContext t, bool withNamespace = true)
-    {
-        switch (t)
-        {
-            case GenericInstanceTypeAnalysisContext gent:
-            {
-                if (gent.GenericArguments.Count == 0) break;
-                var sb = new StringBuilder();
-                sb.Append(gent.GenericType.ModifiedSourceString());
-                sb.Append('<');
-                var first = true;
-                foreach (var genericArgument in gent.GenericArguments)
-                {
-                    if (!first)
-                        sb.Append(", ");
-                    else
-                        first = false;
-
-                    sb.Append(genericArgument.ModifiedSourceString());
-                }
-
-                sb.Append('>');
-                return sb.ToString();
-            }
-            case PointerTypeAnalysisContext ptrt:
-                return "Pointer<" + ptrt.ElementType.ModifiedSourceString() + ">";
-            case SzArrayTypeAnalysisContext szat:
-                return szat.ElementType.ModifiedSourceString() + "[]";
-            case ArrayTypeAnalysisContext at:
-                return at.ElementType.ModifiedSourceString() + "[]".Repeat(at.Rank);
-            case GenericParameterTypeAnalysisContext genp:
-                return genp.DefaultName;
-        }
-
-        if (t.Definition != null)
-            return withNamespace ? t.Definition.FullName!.Clean() : t.Definition.Name!.Clean();
-
-        var ret = new StringBuilder();
-        if (t.OverrideNs != null && withNamespace)
-            ret.Append(t.OverrideNs).Append('.');
-
-        ret.Append(t.Name);
-
-        return ret.ToString().Clean();
-    }
+    Debugger.Break();
+    var module = ts.factory.createModuleDeclaration(
+        null,
+        ts.factory.createIdentifier(type.Namespace is not null ? $"Il2Cpp.{type.Namespace}" : "Il2Cpp"),
+        ts.factory.createModuleBlock(new[]{type.AsTsClass()}),
+        ts.NodeFlags.Namespace
+    );
+    result.AppendLine(printer.printNode(ts.EmitHint.Unspecified, module, resultFile));
 }
 
-#region Serializable data types
+File.WriteAllText("bindings.ts", result.ToString());
 
-[JsonSourceGenerationOptions(WriteIndented = true)]
-[JsonSerializable(typeof(IOrderedEnumerable<Il2CppClass>))]
-internal partial class SourceGenerationContext : JsonSerializerContext;
 
-public record Il2CppType(
-    string Name,
-    string FullName,
-    string Namespace
-    // bool IsNested,
-    // bool IsGeneric
-);
-
-public record Il2CppField(
-    string Name,
-    int Offset,
-    Il2CppType Type
-);
-
-public record Il2CppMethod(
-    string Name,
-    Il2CppParameter[] Parameters,
-    Il2CppType? ReturnType,
-    bool IsStatic,
-    int? Index,
-    ulong MethodInfoPtr
-);
-
-public record Il2CppParameter(
-    string Name,
-    Il2CppType Type
-);
-
-public record Il2CppClass(
-    Il2CppType Type,
-    Il2CppType? BaseType,
-    bool IsStruct,
-    int InheritanceDepth,
-    Il2CppField[] Fields,
-    Il2CppMethod[] Methods,
-    Il2CppClass[] NestedClasses
-)
+Debugger.Break();
+/*
+Console.WriteLine("Parsing all classes...");
+var file = new SourceFile
 {
-    public static implicit operator Il2CppClass(TypeAnalysisContext t)
+    FileName = args[2],
+    Statements = new NodeArray<IStatement>(types.Select(t =>
     {
-        return new Il2CppClass(
-            new Il2CppType(
-                t.ModifiedSourceString(false),
-                t.ModifiedSourceString(),
-                t.Namespace
-            ),
-            //null
-            t.BaseType is not null
-                ? new Il2CppType(
-                    t.BaseType.ModifiedSourceString(false),
-                    t.BaseType.ModifiedSourceString(),
-                    t.BaseType.Namespace.Clean()
-                )
-                : null,
-            t.IsValueType || t.IsEnumType,
-            t.GetInheritanceDepth(),
-            t.Fields.Select(f => new Il2CppField(
-                f.Name.Clean(),
-                f.Offset,
-                new Il2CppType(
-                    LibCpp2ILUtils.GetTypeReflectionData(f.FieldType).FullNameFromRef(false),
-                    LibCpp2ILUtils.GetTypeReflectionData(f.FieldType).FullNameFromRef(),
-                    f.FieldTypeInfoProvider.TypeNamespace
-                    // f.FieldTypeInfoProvider.IsGenericInstance
-                    // f.FieldTypeInfoProvider.DeclaringTypeInfoProvider == null,
-                    // f.FieldTypeInfoProvider.gen
-                )
-            )).ToArray(),
-            t.Methods.Select(m => new Il2CppMethod(
-                m.MethodName.Clean(),
-                m.Parameters.Select(p => new Il2CppParameter(p.Name.Clean(), new Il2CppType(
-                    LibCpp2ILUtils.GetTypeReflectionData(p.ParameterType).FullNameFromRef(false),
-                    LibCpp2ILUtils.GetTypeReflectionData(p.ParameterType).FullNameFromRef(true),
-                    p.ParameterTypeInfoProvider.TypeNamespace
-                ))).ToArray(),
-                m.ReturnType.OriginalTypeName == "Void" ? null : /*m.ReturnType.ToIl2CppType()*/null,
-                m.IsStatic,
-                m.Definition.GetWasmIndex(),
-                m.UnderlyingPointer
-            )).ToArray(),
-            t.NestedTypes.Select(n => (Il2CppClass)n).ToArray()
+        var node = t.AsTsClass();
+        return new ModuleDeclaration(null, new Identifier(t.Namespace), new ModuleBlock([node]));
+    })),
+};
+*/
+
+
+internal static class Helpers
+{
+    public static V8ScriptEngine Engine = new V8ScriptEngine();
+
+    public static dynamic ts => Engine.Script.ts;
+    public static dynamic console => Engine.Script.console;
+
+    static Helpers()
+    {
+        Engine.DocumentSettings.AccessFlags = DocumentAccessFlags.EnableAllLoading;
+        Engine.AddHostType("Console", typeof(Console));
+        Engine.Evaluate(
+            File.ReadAllText("/home/gu5/RiderProjects/Il2CppTsBindgen/node_modules/typescript/lib/typescript.js"));
+        Engine.Execute("var console; console.log = Console.WriteLine;");
+    }
+
+    public static object AsTsClass(this TypeDefinition type)
+    {
+        var heritage = new NodeArray<HeritageClause>();
+        if (type.BaseType is not null)
+            heritage.Add(new HeritageClause(SyntaxKind.ExtendsKeyword,
+            [
+                ((TypeReferenceNode)type.BaseType.ToTypeSignature().ToAstNode()).ToExpression()
+            ]));
+        return ts.factory.createClassDeclaration(
+            null,
+            ts.factory.createIdentifier(type.Name),
+            type.GenericParameters.Count > 0
+                ? type.GenericParameters.Select(p =>
+                    ts.factory.createTypeParameterDeclaration(null, new Identifier(p.Name), null, null))
+                : Engine.Evaluate("[]"),
+            Engine.Evaluate("[]"), // heritage
+            Engine.Evaluate("undefined") // ?
         );
     }
+
+    public static ExpressionWithTypeArguments ToExpression(this TypeReferenceNode type)
+    {
+        return new ExpressionWithTypeArguments(
+            (Identifier)type.TypeName,
+            type.TypeArguments
+        );
+    }
+
+    public static TypeNodeBase ToAstNode(this TypeSignature type)
+    {
+        return type switch
+        {
+            GenericInstanceTypeSignature gentype => new TypeReferenceNode(new Identifier(gentype.GenericType.Name),
+                new NodeArray<ITypeNode>(gentype.TypeArguments.Select(ToAstNode))),
+            PointerTypeSignature ptype => new TypeReferenceNode(new Identifier("Pointer"), [ToAstNode(ptype.BaseType)]),
+            ArrayTypeSignature arrtype => new ArrayTypeNode(ToAstNode(arrtype.BaseType)),
+            _ => new TypeReferenceNode(new Identifier(type.Name), [])
+        };
+    }
 }
-#endregion
