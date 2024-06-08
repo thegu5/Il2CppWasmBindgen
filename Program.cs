@@ -48,29 +48,28 @@ Cpp2IlApi.InitializeLibCpp2Il(args[0],
 
 #endregion
 
-// new InterfaceMethodFixProcessingLayer().Process(Cpp2IlApi.CurrentAppContext);
+Console.WriteLine("Running processing layers...");
+new InterfaceMethodFixProcessingLayer().Process(Cpp2IlApi.CurrentAppContext); // <- for debugging
 new AttributeInjectorProcessingLayer().Process(Cpp2IlApi.CurrentAppContext);
 new WasmMethodAttributeProcessingLayer().Process(Cpp2IlApi.CurrentAppContext);
+
+Process.GetCurrentProcess().Kill();
 
 Console.WriteLine("Building assemblies...");
 Directory.CreateDirectory(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out"));
 new AsmResolverDllOutputFormatDefault().BuildAssemblies(Cpp2IlApi.CurrentAppContext).ForEach(asm =>
     asm.Write(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out", asm.Name + ".dll")));
 
-Process.GetCurrentProcess().Kill();
+
 
 // broken - resolver doesn't find files, interface implementations are borked somehow
 Console.WriteLine("Reading assemblies back from disk...");
-var assemblies = Directory.GetFiles(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out"))
-    .Select(Assembly.LoadFile);
-/*
-AppDomain.CurrentDomain.AssemblyResolve += (sender, eventArgs) =>
-{
-    return eventArgs.;
-};*/
-foreach (var a in assemblies)
-{
-    Console.WriteLine(a.GetName().Name);
-    Console.WriteLine(a.DefinedTypes);
-}
+//var assemblies = Directory.GetFiles(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out"))
+//    .Select(Assembly.LoadFile);
+
+var acs = Assembly.LoadFrom(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out", "Assembly-CSharp.dll"));
 Debugger.Break();
+foreach (var t in acs.DefinedTypes)
+{
+    Console.WriteLine(t.Name);
+}

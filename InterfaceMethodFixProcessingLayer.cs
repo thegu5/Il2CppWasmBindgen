@@ -11,12 +11,11 @@ public class InterfaceMethodFixProcessingLayer : Cpp2IlProcessingLayer
     {
         foreach (var type in appContext.AllTypes)
         {
-            foreach (var method in type.Methods.Where(method => method.Name.Contains('.') && !method.Name.StartsWith('.') && !method.Name.StartsWith('<')))
+            if (type.Name.Contains("FarWaypointDelay")) Debugger.Break();
+            foreach (var prop in type.Properties.Where(method => method.Name.Contains('.') && !method.Name.StartsWith('.') && !method.Name.StartsWith('<')))
             {
-                Console.WriteLine("Found violating name: " + method.Name);
-                // Debugger.Launch();
-                Debugger.Break();
-                method.OverrideName = method.Name.Split('.').Last();
+                Console.WriteLine("Found violating property: " + prop.Name);
+                prop.OverrideName = prop.Name.Split('.').Last();
             }
         }
     }

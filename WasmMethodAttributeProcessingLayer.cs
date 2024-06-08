@@ -22,15 +22,8 @@ public class WasmMethodAttributeProcessingLayer : Cpp2IlProcessingLayer
                 method.AnalyzeCustomAttributeData();
                 if (method.Definition is null || method.CustomAttributes == null || method.UnderlyingPointer == 0) continue;
                 
-                WasmFunctionDefinition wasmdef;
-                try
-                {
-                    wasmdef = WasmUtils.GetWasmDefinition(method.Definition);
-                }
-                catch
-                {
-                    continue;
-                }
+                var wasmdef = WasmUtils.TryGetWasmDefinition(method.Definition);
+                if (wasmdef is null) continue;
                 
                 AttributeInjectionUtils.AddOneParameterAttribute(method, methodIndexAttributeInfo, wasmdef.IsImport
                     ? ((WasmFile)LibCpp2IlMain.Binary!).FunctionTable.IndexOf(wasmdef)
