@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Reflection;
 using AssetRipper.Primitives;
+using BepInEx.AssemblyPublicizer;
 using Cpp2IL.Core;
 using Cpp2IL.Core.Api;
 using Cpp2IL.Core.InstructionSets;
@@ -8,7 +9,6 @@ using Cpp2IL.Core.OutputFormats;
 using Cpp2IL.Core.ProcessingLayers;
 using Il2CppTsBindgen;
 using LibCpp2IL;
-
 #pragma warning disable IL2026
 
 #region proc arg handling
@@ -53,7 +53,6 @@ new InterfaceMethodFixProcessingLayer().Process(Cpp2IlApi.CurrentAppContext); //
 new AttributeInjectorProcessingLayer().Process(Cpp2IlApi.CurrentAppContext);
 new WasmMethodAttributeProcessingLayer().Process(Cpp2IlApi.CurrentAppContext);
 
-Process.GetCurrentProcess().Kill();
 
 Console.WriteLine("Building assemblies...");
 Directory.CreateDirectory(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out"));
@@ -61,12 +60,21 @@ new AsmResolverDllOutputFormatDefault().BuildAssemblies(Cpp2IlApi.CurrentAppCont
     asm.Write(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out", asm.Name + ".dll")));
 
 
+Console.WriteLine("Publicizing...");
+var assemblypaths = Directory.GetFiles(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out"));
+// This is both needed to access certain types and to fix a cpp2il bug:
+// interface-implementing property methods in compiler generated code are private instead of public
+assemblypaths.ToList().ForEach(p => AssemblyPublicizer.Publicize(p, p, new AssemblyPublicizerOptions
+{
+    IncludeOriginalAttributesAttribute = false,
+    PublicizeCompilerGenerated = true,
+    Strip = false
+}));
 
-// broken - resolver doesn't find files, interface implementations are borked somehow
+
 Console.WriteLine("Reading assemblies back from disk...");
-//var assemblies = Directory.GetFiles(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out"))
-//    .Select(Assembly.LoadFile);
 
+// TODO: fix loading of injected attribute types, which were broken by the publicizer
 var acs = Assembly.LoadFrom(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out", "Assembly-CSharp.dll"));
 Debugger.Break();
 foreach (var t in acs.DefinedTypes)
