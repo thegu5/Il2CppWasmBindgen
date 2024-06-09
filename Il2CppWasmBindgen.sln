@@ -1,5 +1,5 @@
 ﻿Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Il2CppTsBindgen", "Il2CppTsBindgen.csproj", "{4C9B8AA5-1B3B-4EAB-8AC9-7750FDF70C89}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Il2CppWasmBindgen", "Il2CppWasmBindgen.csproj", "{4C9B8AA5-1B3B-4EAB-8AC9-7750FDF70C89}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

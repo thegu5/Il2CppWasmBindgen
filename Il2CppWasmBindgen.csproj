@@ -7,7 +7,7 @@
         <Nullable>enable</Nullable>
         <PublishAot>false</PublishAot>
         <InvariantGlobalization>true</InvariantGlobalization>
-        <RootNamespace>Il2CppTsBindgen</RootNamespace>
+        <RootNamespace>Il2CppWasmBindgen</RootNamespace>
         <TypeScriptCompileBlocked>true</TypeScriptCompileBlocked>
     </PropertyGroup>
 

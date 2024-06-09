@@ -4,7 +4,7 @@ using Cpp2IL.Core.Utils;
 using LibCpp2IL;
 using LibCpp2IL.Wasm;
 
-namespace Il2CppTsBindgen;
+namespace Il2CppWasmBindgen;
 
 public class WasmMethodAttributeProcessingLayer : Cpp2IlProcessingLayer
 {

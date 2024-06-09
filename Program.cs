@@ -7,18 +7,16 @@ using Cpp2IL.Core.Api;
 using Cpp2IL.Core.InstructionSets;
 using Cpp2IL.Core.OutputFormats;
 using Cpp2IL.Core.ProcessingLayers;
-using Il2CppTsBindgen;
+using Il2CppWasmBindgen;
 using LibCpp2IL;
-#pragma warning disable IL2026
 
 #region proc arg handling
 
-if (args.Length != 3)
+if (args.Length != 2)
 {
-    Console.OpenStandardError().Write("Make sure to provide three arguments:\n"u8);
+    Console.OpenStandardError().Write("Make sure to provide two arguments:\n"u8);
     Console.OpenStandardError().Write("1. WASM file\n"u8);
     Console.OpenStandardError().Write("2. global-metadata.dat file\n"u8);
-    Console.OpenStandardError().Write("3. Output file (probably ending in .ts)\n"u8);
     Process.GetCurrentProcess().Kill();
 }
 
