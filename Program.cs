@@ -48,15 +48,16 @@ Cpp2IlApi.InitializeLibCpp2Il(args[0],
 
 Console.WriteLine("Running processing layers...");
 new InterfaceMethodFixProcessingLayer().Process(Cpp2IlApi.CurrentAppContext); // <- for debugging
-new AttributeInjectorProcessingLayer().Process(Cpp2IlApi.CurrentAppContext);
+//new AttributeInjectorProcessingLayer().Process(Cpp2IlApi.CurrentAppContext);
 new WasmMethodAttributeProcessingLayer().Process(Cpp2IlApi.CurrentAppContext);
 
 
 Console.WriteLine("Building assemblies...");
 Directory.CreateDirectory(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out"));
-new AsmResolverDllOutputFormatDefault().BuildAssemblies(Cpp2IlApi.CurrentAppContext).ForEach(asm =>
+/*new AsmResolverDllOutputFormatDefault().BuildAssemblies(Cpp2IlApi.CurrentAppContext).ForEach(asm =>
+    asm.Write(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out", asm.Name + ".dll")));*/
+new WasmDirectILOutputFormat().BuildAssemblies(Cpp2IlApi.CurrentAppContext).ForEach(asm =>
     asm.Write(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out", asm.Name + ".dll")));
-
 
 Console.WriteLine("Publicizing...");
 var assemblypaths = Directory.GetFiles(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out"));
@@ -74,7 +75,7 @@ Console.WriteLine("Reading assemblies back from disk...");
 
 // TODO: fix loading of injected attribute types, which were broken by the publicizer
 var acs = Assembly.LoadFrom(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out", "Assembly-CSharp.dll"));
-Debugger.Break();
+
 foreach (var t in acs.DefinedTypes)
 {
     Console.WriteLine(t.Name);
