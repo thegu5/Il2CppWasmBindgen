@@ -3,7 +3,6 @@ using AsmResolver.DotNet;
 using AsmResolver.DotNet.Code.Cil;
 using AsmResolver.DotNet.Signatures;
 using AsmResolver.PE.DotNet.Cil;
-using AsmResolver.PE.DotNet.Metadata.Tables.Rows;
 using Cpp2IL.Core.Model.Contexts;
 using Cpp2IL.Core.OutputFormats;
 using Cpp2IL.Core.Utils;
@@ -40,7 +39,7 @@ public class WasmDirectILOutputFormat : AsmResolverDllOutputFormat
         }
         catch (Exception e)
         {
-            Console.WriteLine("Disassembly failed for method " + methodContext.MethodName +" with reason " + e.Message);
+            Console.WriteLine("Disassembly failed for method " + methodContext.MethodName + " with reason " + e.Message);
         }
     }
 
