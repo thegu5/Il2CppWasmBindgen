@@ -42,7 +42,7 @@ InstructionSetRegistry.RegisterInstructionSet<WasmInstructionSet>(DefaultInstruc
 Console.SetIn(new StringReader("4fb240"));
 Cpp2IlApi.InitializeLibCpp2Il(args[0],
     args[1],
-    new UnityVersion(2023, 2, 5), true);
+    new UnityVersion(/*2023*/2022, 2, 5), true);
 
 #endregion
 
@@ -54,15 +54,14 @@ new WasmMethodAttributeProcessingLayer().Process(Cpp2IlApi.CurrentAppContext);
 
 Console.WriteLine("Building assemblies...");
 Directory.CreateDirectory(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out"));
-/*new AsmResolverDllOutputFormatDefault().BuildAssemblies(Cpp2IlApi.CurrentAppContext).ForEach(asm =>
-    asm.Write(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out", asm.Name + ".dll")));*/
-new WasmDirectILOutputFormat().BuildAssemblies(Cpp2IlApi.CurrentAppContext).ForEach(asm =>
+new AsmResolverDllOutputFormatDefault().BuildAssemblies(Cpp2IlApi.CurrentAppContext).ForEach(asm =>
     asm.Write(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out", asm.Name + ".dll")));
 
+// This is both needed to access certain types and to fix a cpp2il bug:
+// interface-implementing property methods in compiler generated code are sometimes private instead of public
+// https://github.com/SamboyCoding/Cpp2IL/issues/310
 Console.WriteLine("Publicizing...");
 var assemblypaths = Directory.GetFiles(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out"));
-// This is both needed to access certain types and to fix a cpp2il bug:
-// interface-implementing property methods in compiler generated code are private instead of public
 assemblypaths.ToList().ForEach(p => AssemblyPublicizer.Publicize(p, p, new AssemblyPublicizerOptions
 {
     IncludeOriginalAttributesAttribute = false,
