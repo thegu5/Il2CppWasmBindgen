@@ -1,4 +1,3 @@
-using System.Reflection.Metadata;
 using AsmResolver.DotNet;
 using AsmResolver.DotNet.Code.Cil;
 using AsmResolver.DotNet.Signatures;
@@ -7,8 +6,8 @@ using Cpp2IL.Core.Model.Contexts;
 using Cpp2IL.Core.OutputFormats;
 using Cpp2IL.Core.Utils;
 using Cpp2IL.Core.Utils.AsmResolver;
+using LibCpp2IL;
 using WasmDisassembler;
-using MethodDefinition = AsmResolver.DotNet.MethodDefinition;
 
 namespace Il2CppWasmBindgen;
 
@@ -18,24 +17,24 @@ public class WasmDirectILOutputFormat : AsmResolverDllOutputFormat
     public override string OutputFormatId => "WasmDirectILOutputFormat";
     public override string OutputFormatName => "Wasm Direct IL Conversion Output Format";
 
-    private MethodDefinition currentMethod;
-    private ReferenceImporter currentImporter;
+    private MethodDefinition? _currentMethod;
+    // private ReferenceImporter currentImporter;
     
     protected override void FillMethodBody(MethodDefinition methodDefinition, MethodAnalysisContext methodContext)
     {
-        currentMethod = methodDefinition;
-        currentImporter = new ReferenceImporter(currentMethod.Module);
+        _currentMethod = methodDefinition;
+        // currentImporter = new ReferenceImporter(currentMethod.Module);
         
-        var wasmdef = WasmUtils.TryGetWasmDefinition(methodContext.Definition);
-        if (wasmdef is null) return;
+        var wasmDefinition = WasmUtils.TryGetWasmDefinition(methodContext.Definition!);
+        if (wasmDefinition is null) return;
         try
         {
-            var wasminstrs = Disassembler.Disassemble(wasmdef.AssociatedFunctionBody?.Instructions,
+            var wasmInstructions = Disassembler.Disassemble(wasmDefinition.AssociatedFunctionBody!.Instructions,
                 (uint)methodContext.UnderlyingPointer);
 
             methodDefinition.CilMethodBody = new CilMethodBody(methodDefinition);
             methodDefinition.CilMethodBody.Instructions.Clear();
-            methodDefinition.CilMethodBody.Instructions.AddRange(wasminstrs.SelectMany(ProcessInstruction));
+            methodDefinition.CilMethodBody.Instructions.AddRange(wasmInstructions.SelectMany(ProcessInstruction));
         }
         catch (Exception e)
         {
@@ -65,8 +64,10 @@ public class WasmDirectILOutputFormat : AsmResolverDllOutputFormat
             case WasmMnemonic.Proposed_Catch:
                 break;
             case WasmMnemonic.Proposed_Throw:
+                // return [new CilInstruction(CilOpCodes.Throw)];
                 break;
             case WasmMnemonic.Proposed_Rethrow:
+                // return [new CilInstruction(CilOpCodes.Rethrow)];
                 break;
             case WasmMnemonic.Proposed_BrOnExn:
                 break;
@@ -87,17 +88,17 @@ public class WasmDirectILOutputFormat : AsmResolverDllOutputFormat
                 if (defs.Count > 1)
                     Console.WriteLine(
                         $"DEBUG: Method index {instr.Operands[0]} has more than one managed method inside of it");
-                var imported = currentMethod.Module.CorLibTypeFactory.CorLibScope
+                var imported = _currentMethod.Module.CorLibTypeFactory.CorLibScope
                     .CreateTypeReference(defs[0].DeclaringType.Namespace, defs[0].DeclaringType.Name)
                     .CreateMemberReference(defs[0].Name,
                         defs[0].IsStatic
                             ? MethodSignature.CreateStatic(
-                                AsmResolverUtils.GetTypeSignatureFromIl2CppType(currentMethod.Module,
-                                    defs[0].RawReturnType), defs[0].GenericContainer?.genericParameterCount ?? 0, defs[0].Parameters.Select(p => AsmResolverUtils.GetTypeSignatureFromIl2CppType(currentMethod.Module, p.RawType)))
+                                AsmResolverUtils.GetTypeSignatureFromIl2CppType(_currentMethod.Module,
+                                    defs[0].RawReturnType), defs[0].GenericContainer?.genericParameterCount ?? 0, defs[0].Parameters.Select(p => AsmResolverUtils.GetTypeSignatureFromIl2CppType(_currentMethod.Module, p.RawType)))
                             : MethodSignature.CreateInstance(
-                                AsmResolverUtils.GetTypeSignatureFromIl2CppType(currentMethod.Module,
-                                    defs[0].RawReturnType), defs[0].GenericContainer?.genericParameterCount ?? 0, defs[0].Parameters.Select(p => AsmResolverUtils.GetTypeSignatureFromIl2CppType(currentMethod.Module, p.RawType))));
-                Console.WriteLine(currentMethod.Name + " is calling " + defs[0].Name);
+                                AsmResolverUtils.GetTypeSignatureFromIl2CppType(_currentMethod.Module,
+                                    defs[0].RawReturnType), defs[0].GenericContainer?.genericParameterCount ?? 0, defs[0].Parameters.Select(p => AsmResolverUtils.GetTypeSignatureFromIl2CppType(_currentMethod.Module, p.RawType))));
+                Console.WriteLine(_currentMethod.Name + " is calling " + defs[0].Name);
                 return [new CilInstruction(CilOpCodes.Call, imported)];
             case WasmMnemonic.CallIndirect:
                 break;
@@ -200,8 +201,29 @@ public class WasmDirectILOutputFormat : AsmResolverDllOutputFormat
             case WasmMnemonic.F64Const:
                 return [new CilInstruction(CilOpCodes.Ldc_R8, instr.Operands[0])];
             // numerics
-            case WasmMnemonic.I32Load: // TODO
-                break;
+            case WasmMnemonic.I32Load: // TODO: let ProcessInstruction introspect prev/next wasm instrs, and mess with current instr list
+                /*var global = LibCpp2IlMain.GetAnyGlobalByAddress();
+                if (global is null) return [new CilInstruction(CilOpCodes.Ldc_I4, 0)];
+                switch (global.Type)
+                {
+                    case MetadataUsageType.TypeInfo:
+                        break;
+                    case MetadataUsageType.Type:
+                        break;
+                    case MetadataUsageType.MethodDef:
+                        break;
+                    case MetadataUsageType.FieldInfo:
+                        break;
+                    case MetadataUsageType.StringLiteral:
+                        return [new CilInstruction(CilOpCodes.Ldstr, global.AsLiteral())];
+                    case MetadataUsageType.MethodRef:
+                        break;
+                    case MetadataUsageType.FieldRva:
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+                break;*/
             case WasmMnemonic.I64Load:
                 break;
             case WasmMnemonic.F32Load:
@@ -350,9 +372,11 @@ public class WasmDirectILOutputFormat : AsmResolverDllOutputFormat
             case WasmMnemonic.I64Rotr:
                 break;
             case WasmMnemonic.F32Abs:
+                // return [new CilInstruction(CilOpCodes.Call, currentImporter.ImportMethod(new MethodDefinition())))]; 
                 break;
             case WasmMnemonic.F32Neg:
-                break;
+            case WasmMnemonic.F64Neg:
+                return [new CilInstruction(CilOpCodes.Neg)];
             case WasmMnemonic.F32Ceil:
                 break;
             case WasmMnemonic.F32Floor:
@@ -370,8 +394,6 @@ public class WasmDirectILOutputFormat : AsmResolverDllOutputFormat
             case WasmMnemonic.F32Copysign:
                 break;
             case WasmMnemonic.F64Abs:
-                break;
-            case WasmMnemonic.F64Neg:
                 break;
             case WasmMnemonic.F64Ceil:
                 break;
