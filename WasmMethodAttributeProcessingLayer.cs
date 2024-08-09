@@ -10,7 +10,7 @@ public class WasmMethodAttributeProcessingLayer : Cpp2IlProcessingLayer
 {
     public override void Process(ApplicationAnalysisContext appContext, Action<int, int>? progressCallback = null)
     {
-        var methodIndexAttributes = AttributeInjectionUtils.InjectOneParameterAttribute(appContext, "Cpp2IlInjected",
+        var methodIndexAttributes = AttributeInjectionUtils.InjectOneParameterAttribute(appContext, "Cpp2ILInjected",
             "WasmMethod", AttributeTargets.Method, false, appContext.SystemTypes.SystemInt32Type, "Index");
         
         foreach (var assembly in appContext.Assemblies)
