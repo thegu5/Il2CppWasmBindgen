@@ -17,14 +17,14 @@ public class WasmDirectILOutputFormat : AsmResolverDllOutputFormat
     public override string OutputFormatId => "WasmDirectILOutputFormat";
     public override string OutputFormatName => "Wasm Direct IL Conversion Output Format";
 
-    private MethodDefinition? _currentMethod;
+    private MethodDefinition _currentMethod;
     // private ReferenceImporter currentImporter;
-    
+
     protected override void FillMethodBody(MethodDefinition methodDefinition, MethodAnalysisContext methodContext)
     {
         _currentMethod = methodDefinition;
         // currentImporter = new ReferenceImporter(currentMethod.Module);
-        
+
         var wasmDefinition = WasmUtils.TryGetWasmDefinition(methodContext.Definition!);
         if (wasmDefinition is null) return;
         try
@@ -38,12 +38,14 @@ public class WasmDirectILOutputFormat : AsmResolverDllOutputFormat
         }
         catch (Exception e)
         {
-            Console.WriteLine("Disassembly failed for method " + methodContext.MethodName + " with reason " + e.Message);
+            Console.WriteLine("Disassembly failed for method " + methodContext.MethodName + " with reason " +
+                              e.Message);
         }
     }
 
     private List<CilInstruction> ProcessInstruction(WasmInstruction instr)
     {
+        IMethodDescriptor? method; // TODO: manage scopes correctly
         switch (instr.Mnemonic)
         {
             case WasmMnemonic.Unreachable: // TODO: throw a System.Diagnostics.UnreachableException
@@ -94,10 +96,15 @@ public class WasmDirectILOutputFormat : AsmResolverDllOutputFormat
                         defs[0].IsStatic
                             ? MethodSignature.CreateStatic(
                                 AsmResolverUtils.GetTypeSignatureFromIl2CppType(_currentMethod.Module,
-                                    defs[0].RawReturnType), defs[0].GenericContainer?.genericParameterCount ?? 0, defs[0].Parameters.Select(p => AsmResolverUtils.GetTypeSignatureFromIl2CppType(_currentMethod.Module, p.RawType)))
+                                    defs[0].RawReturnType), defs[0].GenericContainer?.genericParameterCount ?? 0,
+                                defs[0].Parameters.Select(p =>
+                                    AsmResolverUtils.GetTypeSignatureFromIl2CppType(_currentMethod.Module, p.RawType)))
                             : MethodSignature.CreateInstance(
                                 AsmResolverUtils.GetTypeSignatureFromIl2CppType(_currentMethod.Module,
-                                    defs[0].RawReturnType), defs[0].GenericContainer?.genericParameterCount ?? 0, defs[0].Parameters.Select(p => AsmResolverUtils.GetTypeSignatureFromIl2CppType(_currentMethod.Module, p.RawType))));
+                                    defs[0].RawReturnType), defs[0].GenericContainer?.genericParameterCount ?? 0,
+                                defs[0].Parameters.Select(p =>
+                                    AsmResolverUtils.GetTypeSignatureFromIl2CppType(_currentMethod.Module,
+                                        p.RawType))));
                 Console.WriteLine(_currentMethod.Name + " is calling " + defs[0].Name);
                 return [new CilInstruction(CilOpCodes.Call, imported)];
             case WasmMnemonic.CallIndirect:
@@ -129,9 +136,10 @@ public class WasmDirectILOutputFormat : AsmResolverDllOutputFormat
             case WasmMnemonic.Reserved_1E:
                 break;
             case WasmMnemonic.Reserved_1F:
-                break; 
-            case WasmMnemonic.LocalGet:// TODO: local variables do not work with these
-                return [new CilInstruction(CilOpCodes.Ldarg, (int)(byte)instr.Operands[0])]; // todo: optimized form _0, _1
+                break;
+            case WasmMnemonic.LocalGet: // TODO: local variables do not work with these
+                return
+                    [new CilInstruction(CilOpCodes.Ldarg, (int)(byte)instr.Operands[0])]; // todo: optimized form _0, _1
             case WasmMnemonic.LocalSet:
                 return [new CilInstruction(CilOpCodes.Starg, (int)(byte)instr.Operands[0])];
             case WasmMnemonic.LocalTee:
@@ -201,29 +209,30 @@ public class WasmDirectILOutputFormat : AsmResolverDllOutputFormat
             case WasmMnemonic.F64Const:
                 return [new CilInstruction(CilOpCodes.Ldc_R8, instr.Operands[0])];
             // numerics
-            case WasmMnemonic.I32Load: // TODO: let ProcessInstruction introspect prev/next wasm instrs, and mess with current instr list
-                /*var global = LibCpp2IlMain.GetAnyGlobalByAddress();
-                if (global is null) return [new CilInstruction(CilOpCodes.Ldc_I4, 0)];
-                switch (global.Type)
-                {
-                    case MetadataUsageType.TypeInfo:
-                        break;
-                    case MetadataUsageType.Type:
-                        break;
-                    case MetadataUsageType.MethodDef:
-                        break;
-                    case MetadataUsageType.FieldInfo:
-                        break;
-                    case MetadataUsageType.StringLiteral:
-                        return [new CilInstruction(CilOpCodes.Ldstr, global.AsLiteral())];
-                    case MetadataUsageType.MethodRef:
-                        break;
-                    case MetadataUsageType.FieldRva:
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException();
-                }
-                break;*/
+            case WasmMnemonic.I32Load
+                : // TODO: let ProcessInstruction introspect prev/next wasm instrs, and mess with current instr list
+            /*var global = LibCpp2IlMain.GetAnyGlobalByAddress();
+            if (global is null) return [new CilInstruction(CilOpCodes.Ldc_I4, 0)];
+            switch (global.Type)
+            {
+                case MetadataUsageType.TypeInfo:
+                    break;
+                case MetadataUsageType.Type:
+                    break;
+                case MetadataUsageType.MethodDef:
+                    break;
+                case MetadataUsageType.FieldInfo:
+                    break;
+                case MetadataUsageType.StringLiteral:
+                    return [new CilInstruction(CilOpCodes.Ldstr, global.AsLiteral())];
+                case MetadataUsageType.MethodRef:
+                    break;
+                case MetadataUsageType.FieldRva:
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+            break;*/
             case WasmMnemonic.I64Load:
                 break;
             case WasmMnemonic.F32Load:
@@ -372,45 +381,152 @@ public class WasmDirectILOutputFormat : AsmResolverDllOutputFormat
             case WasmMnemonic.I64Rotr:
                 break;
             case WasmMnemonic.F32Abs:
-                // return [new CilInstruction(CilOpCodes.Call, currentImporter.ImportMethod(new MethodDefinition())))]; 
-                break;
+                method = _currentMethod.Module!.DefaultImporter.ImportMethod(
+                    typeof(Math).GetMethod(
+                        nameof(Math.Abs),
+                        [typeof(float)]
+                    )!
+                );
+                return [new CilInstruction(CilOpCodes.Call, method)];
             case WasmMnemonic.F32Neg:
             case WasmMnemonic.F64Neg:
                 return [new CilInstruction(CilOpCodes.Neg)];
             case WasmMnemonic.F32Ceil:
-                break;
+                method = _currentMethod.Module!.DefaultImporter.ImportMethod(
+                    typeof(Math).GetMethod(
+                        nameof(MathF.Ceiling),
+                        [typeof(float)]
+                    )!
+                );
+                return [new CilInstruction(CilOpCodes.Call, method)];
             case WasmMnemonic.F32Floor:
-                break;
+                method = _currentMethod.Module!.DefaultImporter.ImportMethod(
+                    typeof(Math).GetMethod(
+                        nameof(MathF.Floor),
+                        [typeof(float)]
+                    )!
+                );
+                return [new CilInstruction(CilOpCodes.Call, method)];
             case WasmMnemonic.F32Trunc:
-                break;
+                method = _currentMethod.Module!.DefaultImporter.ImportMethod(
+                    typeof(Math).GetMethod(
+                        nameof(MathF.Truncate),
+                        [typeof(float)]
+                    )!
+                );
+                return [new CilInstruction(CilOpCodes.Call, method)];
             case WasmMnemonic.F32Nearest:
-                break;
+                method = _currentMethod.Module!.DefaultImporter.ImportMethod(
+                    typeof(Math).GetMethod(
+                        nameof(MathF.Round),
+                        [typeof(float)]
+                    )!
+                );
+                return [new CilInstruction(CilOpCodes.Call, method)];
             case WasmMnemonic.F32Sqrt:
-                break;
+                method = _currentMethod.Module!.DefaultImporter.ImportMethod(
+                    typeof(Math).GetMethod(
+                        nameof(MathF.Sqrt),
+                        [typeof(float)]
+                    )!
+                );
+                return [new CilInstruction(CilOpCodes.Call, method)];
             case WasmMnemonic.F32Min:
-                break;
+                method = _currentMethod.Module!.DefaultImporter.ImportMethod(
+                    typeof(Math).GetMethod(
+                        nameof(Math.Min),
+                        [typeof(float), typeof(float)]
+                    )!
+                );
+                return [new CilInstruction(CilOpCodes.Call, method)];
             case WasmMnemonic.F32Max:
-                break;
+                method = _currentMethod.Module!.DefaultImporter.ImportMethod(
+                    typeof(Math).GetMethod(
+                        nameof(Math.Max),
+                        [typeof(float), typeof(float)]
+                    )!
+                );
+                return [new CilInstruction(CilOpCodes.Call, method)];
             case WasmMnemonic.F32Copysign:
-                break;
+                method = _currentMethod.Module!.DefaultImporter.ImportMethod(
+                    typeof(Math).GetMethod(
+                        nameof(MathF.CopySign),
+                        [typeof(float), typeof(float)]
+                    )!
+                );
+                return [new CilInstruction(CilOpCodes.Call, method)];
             case WasmMnemonic.F64Abs:
-                break;
+                method = _currentMethod.Module!.DefaultImporter.ImportMethod(
+                    typeof(Math).GetMethod(
+                        nameof(Math.Abs),
+                        [typeof(double)]
+                    )!
+                );
+                return [new CilInstruction(CilOpCodes.Call, method)];
             case WasmMnemonic.F64Ceil:
-                break;
+                method = _currentMethod.Module!.DefaultImporter.ImportMethod(
+                    typeof(Math).GetMethod(
+                        nameof(Math.Ceiling),
+                        [typeof(double)]
+                    )!
+                );
+                return [new CilInstruction(CilOpCodes.Call, method)];
             case WasmMnemonic.F64Floor:
-                break;
+                method = _currentMethod.Module!.DefaultImporter.ImportMethod(
+                    typeof(Math).GetMethod(
+                        nameof(Math.Floor),
+                        [typeof(double)]
+                    )!
+                );
+                return [new CilInstruction(CilOpCodes.Call, method)];
             case WasmMnemonic.F64Trunc:
-                break;
+                method = _currentMethod.Module!.DefaultImporter.ImportMethod(
+                    typeof(Math).GetMethod(
+                        nameof(Math.Truncate),
+                        [typeof(double)]
+                    )!
+                );
+                return [new CilInstruction(CilOpCodes.Call, method)];
             case WasmMnemonic.F64Nearest:
-                break;
+                method = _currentMethod.Module!.DefaultImporter.ImportMethod(
+                    typeof(Math).GetMethod(
+                        nameof(Math.Round),
+                        [typeof(double)]
+                    )!
+                );
+                return [new CilInstruction(CilOpCodes.Call, method)];
             case WasmMnemonic.F64Sqrt:
-                break;
+                method = _currentMethod.Module!.DefaultImporter.ImportMethod(
+                    typeof(Math).GetMethod(
+                        nameof(Math.Sqrt),
+                        [typeof(double)]
+                    )!
+                );
+                return [new CilInstruction(CilOpCodes.Call, method)];
             case WasmMnemonic.F64Min:
-                break;
+                method = _currentMethod.Module!.DefaultImporter.ImportMethod(
+                    typeof(Math).GetMethod(
+                        nameof(Math.Min),
+                        [typeof(double), typeof(double)]
+                    )!
+                );
+                return [new CilInstruction(CilOpCodes.Call, method)];
             case WasmMnemonic.F64Max:
-                break;
+                method = _currentMethod.Module!.DefaultImporter.ImportMethod(
+                    typeof(Math).GetMethod(
+                        nameof(Math.Max),
+                        [typeof(double), typeof(double)]
+                    )!
+                );
+                return [new CilInstruction(CilOpCodes.Call, method)];
             case WasmMnemonic.F64Copysign:
-                break;
+                method = _currentMethod.Module!.DefaultImporter.ImportMethod(
+                    typeof(Math).GetMethod(
+                        nameof(Math.CopySign),
+                        [typeof(double), typeof(double)]
+                    )!
+                );
+                return [new CilInstruction(CilOpCodes.Call, method)];
             case WasmMnemonic.I32Wrap_I64:
                 break;
             case WasmMnemonic.I32Trunc_F32_S:
@@ -482,7 +598,7 @@ public class WasmDirectILOutputFormat : AsmResolverDllOutputFormat
             case WasmMnemonic.Proposed_SIMD:
                 break;
             default:
-                throw new ArgumentOutOfRangeException();
+                throw new ArgumentOutOfRangeException(nameof(instr));
         }
         return [];
     }
