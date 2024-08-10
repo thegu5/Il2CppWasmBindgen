@@ -1,5 +1,4 @@
 ﻿using System.Diagnostics;
-using System.Reflection;
 using System.Runtime.InteropServices.JavaScript;
 using AsmResolver.DotNet;
 using AsmResolver.DotNet.Code.Cil;
@@ -14,8 +13,7 @@ using Cpp2IL.Core.OutputFormats;
 using Cpp2IL.Core.ProcessingLayers;
 using Il2CppWasmBindgen;
 using LibCpp2IL;
-using MethodAttributes = AsmResolver.PE.DotNet.Metadata.Tables.MethodAttributes;
-using TypeAttributes = AsmResolver.PE.DotNet.Metadata.Tables.TypeAttributes;
+using AsmResolver.PE.DotNet.Metadata.Tables;
 
 #region proc arg handling
 
@@ -64,8 +62,7 @@ Directory.CreateDirectory(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_
 new WasmDirectILOutputFormat().BuildAssemblies(Cpp2IlApi.CurrentAppContext).ForEach(asm =>
     asm.Write(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out", asm.Name + ".dll")));
 
-// This is both needed to access certain types and to fix a cpp2il bug:
-// interface-implementing property methods in compiler generated code are sometimes private instead of public
+// This is both needed to access certain types and to (try to) fix a cpp2il bug
 // https://github.com/SamboyCoding/Cpp2IL/issues/310
 Console.WriteLine("Publicizing...");
 var assemblypaths = Directory.GetFiles(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out"));
@@ -76,8 +73,8 @@ assemblypaths.ToList().ForEach(p => AssemblyPublicizer.Publicize(p, p, new Assem
     Strip = false
 }));
 
-Console.WriteLine("Generating Javascript interop assembly...");
-/*var interopModule = new ModuleDefinition("Il2CppWasmBindgen.dll");
+/*Console.WriteLine("Generating Javascript interop assembly...");
+var interopModule = new ModuleDefinition("Il2CppWasmBindgen.dll");
 var interopType = new TypeDefinition("", "Il2CppWasmBindgen", TypeAttributes.Public | TypeAttributes.Class);
 var callMethod = new MethodDefinition(
     "Call",
@@ -87,7 +84,7 @@ var callMethod = new MethodDefinition(
         new ArrayTypeSignature(interopModule.CorLibTypeFactory.Object)
     )
 );
-callMethod.CustomAttributes.Add(new CustomAttribute(typeof(JSImportAttribute).GetConstructor([]))
+// callMethod.CustomAttributes.Add(new CustomAttribute(typeof(JSImportAttribute).GetConstructor([]))
 interopModule.TopLevelTypes.Add(interopType);
 
 Console.WriteLine("Reading assemblies back from disk...");
