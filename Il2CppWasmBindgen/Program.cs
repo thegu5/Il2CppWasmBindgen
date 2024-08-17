@@ -59,13 +59,13 @@ new WasmMethodAttributeProcessingLayer().Process(Cpp2IlApi.CurrentAppContext);
 
 Console.WriteLine("Building assemblies...");
 Directory.CreateDirectory(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out"));
-new WasmDirectILOutputFormat().BuildAssemblies(Cpp2IlApi.CurrentAppContext).ForEach(asm =>
+new AsmResolverDllOutputFormatThrowNull().BuildAssemblies(Cpp2IlApi.CurrentAppContext).ForEach(asm =>
     asm.Write(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out", asm.Name + ".dll")));
 
 // This is both needed to access certain types and to (try to) fix a cpp2il bug
 // https://github.com/SamboyCoding/Cpp2IL/issues/310
 Console.WriteLine("Publicizing...");
-var assemblypaths = Directory.GetFiles(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out"));
+var assemblypaths = Directory.GetFiles(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out")).ToList().Where(s => !s.Contains("Il2CppWasmBindgen"));
 assemblypaths.ToList().ForEach(p => AssemblyPublicizer.Publicize(p, p, new AssemblyPublicizerOptions
 {
     IncludeOriginalAttributesAttribute = false,
@@ -73,7 +73,7 @@ assemblypaths.ToList().ForEach(p => AssemblyPublicizer.Publicize(p, p, new Assem
     Strip = false
 }));
 
-/*Console.WriteLine("Generating Javascript interop assembly...");
+Console.WriteLine("Generating Javascript interop assembly...");
 var interopModule = new ModuleDefinition("Il2CppWasmBindgen.dll");
 var interopType = new TypeDefinition("", "Il2CppWasmBindgen", TypeAttributes.Public | TypeAttributes.Class);
 var callMethod = new MethodDefinition(
@@ -84,14 +84,25 @@ var callMethod = new MethodDefinition(
         new ArrayTypeSignature(interopModule.CorLibTypeFactory.Object)
     )
 );
-// callMethod.CustomAttributes.Add(new CustomAttribute(typeof(JSImportAttribute).GetConstructor([]))
+var importCtor = interopModule.DefaultImporter.ImportType(typeof(JSImportAttribute)).CreateMemberReference(".ctor", 
+    new MethodSignature(CallingConventionAttributes.Default, interopModule.CorLibTypeFactory.Void, [interopModule.CorLibTypeFactory.String]));
+
+callMethod.CustomAttributes.Add(new CustomAttribute(importCtor, new CustomAttributeSignature([new CustomAttributeArgument(interopModule.CorLibTypeFactory.String, "iwb.call")])));
+interopType.Methods.Add(callMethod);
 interopModule.TopLevelTypes.Add(interopType);
+interopModule.Write(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out", "Il2CppWasmBindgen.dll"));
 
-Console.WriteLine("Reading assemblies back from disk...");
+
+/*class Test
+{
+    [JSImport("iwb.call")]
+    static void Call() {}
+}*/
+/*Console.WriteLine("Reading assemblies back from disk...");
 assemblypaths = assemblypaths.ToList().Where(path => path.Contains("Assembly-CSharp")).ToArray();
-var modules = assemblypaths.Select(ModuleDefinition.FromFile);
+var modules = assemblypaths.Select(ModuleDefinition.FromFile);*/
 
-foreach (var module in modules)
+/*foreach (var module in modules)
 {
     foreach (var type in module.TopLevelTypes)
     {
@@ -105,8 +116,6 @@ foreach (var module in modules)
                 // Console.WriteLine("Method " + method.FullName + " has idx " + idx);
                 var body = new CilMethodBody(method);
                 method.CilMethodBody = body;
-                var in
-                body.Instructions.Add(new CilInstruction(CilOpCodes.Call, ))
             }
     
         }

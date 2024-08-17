@@ -15,4 +15,8 @@
       <PackageReference Include="BepInEx.AssemblyPublicizer" Version="0.4.2-dev" />
       <PackageReference Include="Samboy063.Cpp2IL.Core" Version="2022.1.0-development.1031" />
     </ItemGroup>
+
+    <ItemGroup>
+      
+    </ItemGroup>
 </Project>
