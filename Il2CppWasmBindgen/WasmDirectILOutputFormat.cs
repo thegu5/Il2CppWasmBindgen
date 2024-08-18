@@ -6,10 +6,11 @@ using Cpp2IL.Core.Model.Contexts;
 using Cpp2IL.Core.OutputFormats;
 using Cpp2IL.Core.Utils;
 using Cpp2IL.Core.Utils.AsmResolver;
-using LibCpp2IL;
 using WasmDisassembler;
 
 namespace Il2CppWasmBindgen;
+
+// Dead attempt, keeping as reference for when working on ISIL
 
 // ReSharper disable once InconsistentNaming
 public class WasmDirectILOutputFormat : AsmResolverDllOutputFormat
