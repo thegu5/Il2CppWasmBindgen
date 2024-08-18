@@ -1,9 +1,5 @@
 ﻿using System.Diagnostics;
-using System.Runtime.InteropServices.JavaScript;
-using AsmResolver.DotNet;
-using AsmResolver.DotNet.Code.Cil;
-using AsmResolver.DotNet.Signatures;
-using AsmResolver.PE.DotNet.Cil;
+using System.Reflection;
 using AssetRipper.Primitives;
 using BepInEx.AssemblyPublicizer;
 using Cpp2IL.Core;
@@ -13,7 +9,6 @@ using Cpp2IL.Core.OutputFormats;
 using Cpp2IL.Core.ProcessingLayers;
 using Il2CppWasmBindgen;
 using LibCpp2IL;
-using AsmResolver.PE.DotNet.Metadata.Tables;
 
 #region proc arg handling
 
@@ -65,7 +60,7 @@ new AsmResolverDllOutputFormatThrowNull().BuildAssemblies(Cpp2IlApi.CurrentAppCo
 // This is both needed to access certain types and to (try to) fix a cpp2il bug
 // https://github.com/SamboyCoding/Cpp2IL/issues/310
 Console.WriteLine("Publicizing...");
-var assemblypaths = Directory.GetFiles(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out")).ToList().Where(s => !s.Contains("Il2CppWasmBindgen"));
+var assemblypaths = Directory.GetFiles(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out"));
 assemblypaths.ToList().ForEach(p => AssemblyPublicizer.Publicize(p, p, new AssemblyPublicizerOptions
 {
     IncludeOriginalAttributesAttribute = false,
@@ -73,51 +68,26 @@ assemblypaths.ToList().ForEach(p => AssemblyPublicizer.Publicize(p, p, new Assem
     Strip = false
 }));
 
-Console.WriteLine("Generating Javascript interop assembly...");
-var interopModule = new ModuleDefinition("Il2CppWasmBindgen.dll");
-var interopType = new TypeDefinition("", "Il2CppWasmBindgen", TypeAttributes.Public | TypeAttributes.Class);
-var callMethod = new MethodDefinition(
-    "Call",
-    MethodAttributes.Public | MethodAttributes.Static,
-    MethodSignature.CreateStatic(
-        interopModule.CorLibTypeFactory.Void,
-        new ArrayTypeSignature(interopModule.CorLibTypeFactory.Object)
-    )
-);
-var importCtor = interopModule.DefaultImporter.ImportType(typeof(JSImportAttribute)).CreateMemberReference(".ctor", 
-    new MethodSignature(CallingConventionAttributes.Default, interopModule.CorLibTypeFactory.Void, [interopModule.CorLibTypeFactory.String]));
+Console.WriteLine("Reading assemblies back from disk...");
+assemblypaths = assemblypaths.Where(path => path.Contains("Assembly-CSharp") || path.Contains("mscorlib")).ToArray();
+Console.WriteLine($"Assemblies: {assemblypaths.Count()}");
+var modules = assemblypaths.Select(Assembly.LoadFrom);
 
-callMethod.CustomAttributes.Add(new CustomAttribute(importCtor, new CustomAttributeSignature([new CustomAttributeArgument(interopModule.CorLibTypeFactory.String, "iwb.call")])));
-interopType.Methods.Add(callMethod);
-interopModule.TopLevelTypes.Add(interopType);
-interopModule.Write(Path.Combine(Directory.GetCurrentDirectory(), "cpp2il_out", "Il2CppWasmBindgen.dll"));
-
-
-/*class Test
+foreach (var module in modules)
 {
-    [JSImport("iwb.call")]
-    static void Call() {}
-}*/
-/*Console.WriteLine("Reading assemblies back from disk...");
-assemblypaths = assemblypaths.ToList().Where(path => path.Contains("Assembly-CSharp")).ToArray();
-var modules = assemblypaths.Select(ModuleDefinition.FromFile);*/
-
-/*foreach (var module in modules)
-{
-    foreach (var type in module.TopLevelTypes)
+    Console.WriteLine($"Module: {module.FullName}"); // todo: fix mscorlib not being processed here idk
+    foreach (var type in module.DefinedTypes)
     {
-        Console.WriteLine(type.FullName);
-        foreach (var method in type.Methods)
+        Console.WriteLine($"Type: {type.FullName}");
+        foreach (var method in type.DeclaredMethods)
         {
-            var wasmattrs = method.FindCustomAttributes("Cpp2ILInjected", "WasmMethod").ToList();
-            if (wasmattrs.Count != 0 && method.IsStatic)
+            var wasmattrs = method.CustomAttributes.Where(a => a.AttributeType.Name == "WasmMethod");
+            if (wasmattrs.Count() != 0 && method.IsStatic)
             {
-                var idx = (int)wasmattrs.First().Signature.NamedArguments.First().Argument.Element;
-                // Console.WriteLine("Method " + method.FullName + " has idx " + idx);
-                var body = new CilMethodBody(method);
-                method.CilMethodBody = body;
+                var idx = (int)wasmattrs.First().NamedArguments.First().TypedValue.Value;
+                Console.WriteLine("Method " + method.Name + " has idx " + idx);
             }
     
         }
     }
-}*/
+}
