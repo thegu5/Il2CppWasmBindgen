@@ -10,8 +10,8 @@ public class WasmMethodAttributeProcessingLayer : Cpp2IlProcessingLayer
 {
     public override void Process(ApplicationAnalysisContext appContext, Action<int, int>? progressCallback = null)
     {
-        var methodIndexAttributes = AttributeInjectionUtils.InjectOneParameterAttribute(appContext, "Cpp2ILInjected",
-            "WasmMethod", AttributeTargets.Method, false, appContext.SystemTypes.SystemInt32Type, "Index");
+        var methodIndexAttributes = AttributeInjectionUtils.InjectTwoParameterAttribute(appContext, "Cpp2ILInjected",
+            "WasmMethod", AttributeTargets.Method, false, appContext.SystemTypes.SystemInt32Type, "Index", appContext.SystemTypes.SystemInt32Type, "Pointer");
         
         foreach (var assembly in appContext.Assemblies)
         {
@@ -25,9 +25,9 @@ public class WasmMethodAttributeProcessingLayer : Cpp2IlProcessingLayer
                 var wasmdef = WasmUtils.TryGetWasmDefinition(method.Definition);
                 if (wasmdef is null) continue;
                 
-                AttributeInjectionUtils.AddOneParameterAttribute(method, methodIndexAttributeInfo, wasmdef.IsImport
+                AttributeInjectionUtils.AddTwoParameterAttribute(method, methodIndexAttributeInfo, wasmdef.IsImport
                     ? ((WasmFile)LibCpp2IlMain.Binary!).FunctionTable.IndexOf(wasmdef)
-                    : wasmdef.FunctionTableIndex);
+                    : wasmdef.FunctionTableIndex, Convert.ToInt32(method.Definition.MethodPointer));
             }
         }
     }
