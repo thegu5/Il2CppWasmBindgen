@@ -1,5 +1,5 @@
 ﻿using System.Diagnostics;
-using System.Reflection;
+using AsmResolver.DotNet;
 using AssetRipper.Primitives;
 using BepInEx.AssemblyPublicizer;
 using Cpp2IL.Core;
@@ -68,26 +68,8 @@ assemblypaths.ToList().ForEach(p => AssemblyPublicizer.Publicize(p, p, new Assem
     Strip = false
 }));
 
+/*
 Console.WriteLine("Reading assemblies back from disk...");
-assemblypaths = assemblypaths.Where(path => path.Contains("Assembly-CSharp") || path.Contains("mscorlib")).ToArray();
-Console.WriteLine($"Assemblies: {assemblypaths.Count()}");
-var modules = assemblypaths.Select(Assembly.LoadFrom);
-
-foreach (var module in modules)
-{
-    Console.WriteLine($"Module: {module.FullName}"); // todo: fix mscorlib not being processed here idk
-    foreach (var type in module.DefinedTypes)
-    {
-        Console.WriteLine($"Type: {type.FullName}");
-        foreach (var method in type.DeclaredMethods)
-        {
-            var wasmattrs = method.CustomAttributes.Where(a => a.AttributeType.Name == "WasmMethod");
-            if (wasmattrs.Count() != 0 && method.IsStatic)
-            {
-                var idx = (int)wasmattrs.First().NamedArguments.First().TypedValue.Value;
-                Console.WriteLine("Method " + method.Name + " has idx " + idx);
-            }
-    
-        }
-    }
-}
+var assemblies = assemblypaths.Select(AssemblyDefinition.FromFile).ToList();
+var mscorlib = assemblies.First(a => a.Name!.Contains("mscorlib"));
+mscorlib.Modules.First().GetAllTypes().First(t => t.Name == "Object").BaseType = new TypeReference()*/ // TODO: make its BaseType Il2CppObjectBase from the Runtime dll

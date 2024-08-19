@@ -6,7 +6,7 @@ public static class Runtime
 {
     [WasmImportLinkage]
     [DllImport("env", EntryPoint = "iwbcall")]
-    public static extern void Call(int idx);
+    public static extern int? Call(int idx);
 }
 
 public static class Plugin
