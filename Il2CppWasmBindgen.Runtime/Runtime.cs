@@ -1,8 +1,8 @@
 ﻿using System.Runtime.InteropServices;
 
-namespace LibIl2CppWasmBindgen;
+namespace Il2CppWasmBindgen.Runtime;
 
-public static class LibIl2CppWasmBindgen
+public static class Runtime
 {
     [WasmImportLinkage]
     [DllImport("env", EntryPoint = "iwbcall")]
@@ -14,7 +14,7 @@ public static class Plugin
     [UnmanagedCallersOnly(EntryPoint = "Start")]
     public static int Start()
     {
-        LibIl2CppWasmBindgen.Call(0);
+        Runtime.Call(0);
         return 42;
     }
 }

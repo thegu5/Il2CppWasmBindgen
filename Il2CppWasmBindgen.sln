@@ -1,7 +1,7 @@
 ﻿Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Il2CppWasmBindgen", "Il2CppWasmBindgen/Il2CppWasmBindgen.csproj", "{4C9B8AA5-1B3B-4EAB-8AC9-7750FDF70C89}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LibIl2CppWasmBindgen", "LibIl2CppWasmBindgen\LibIl2CppWasmBindgen.csproj", "{2A56D9B6-E67C-436D-953E-9DAFE4F9FFD9}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Il2CppWasmBindgen.Runtime", "Il2CppWasmBindgen.Runtime\Il2CppWasmBindgen.Runtime.csproj", "{2A56D9B6-E67C-436D-953E-9DAFE4F9FFD9}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
